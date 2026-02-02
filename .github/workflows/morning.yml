@@ -3,15 +3,16 @@ name: timelab-morning-scanner-v2
 on:
   workflow_dispatch:
   schedule:
-    # 07:00 Europe/Madrid = 06:00 UTC en invierno (febrero).
-    # Lo ajustaremos en el siguiente paso para verano/invierno automáticamente.
+    # 07:00 Europe/Madrid = 06:00 UTC en invierno
+    # (luego podemos automatizar cambio verano/invierno)
     - cron: "0 6 * * *"
 
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -24,7 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 lxml
 
-      - name: Run scanner
+      - name: Run TIMELAB scanner
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
