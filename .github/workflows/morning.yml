@@ -1,4 +1,4 @@
-name: timelab-morning-scanner
+name: timelab-morning-scanner-v2
 
 on:
   workflow_dispatch:
