@@ -1,0 +1,34 @@
+{
+  "version": "2026-02-03",
+  "notes": "TIMELAB target list v1. Prioriza modelos con demanda en Catawiki y riesgo fake bajo/medio.",
+  "targets": [
+    { "id": "LON_CONQUEST_AUTO", "brand": "Longines", "model_keywords": ["conquest", "automatic"], "risk": "low", "expected_catawiki_eur": [700, 1200], "max_buy_eur": 550 },
+    { "id": "ORIS_BCPD", "brand": "Oris", "model_keywords": ["big crown", "pointer date"], "risk": "low", "expected_catawiki_eur": [800, 1300], "max_buy_eur": 650 },
+    { "id": "ORIS_AQUIS_DATE", "brand": "Oris", "model_keywords": ["aquis", "date"], "risk": "low", "expected_catawiki_eur": [800, 1400], "max_buy_eur": 750 },
+
+    { "id": "BMM_CLIFTON", "brand": "Baume & Mercier", "model_keywords": ["clifton"], "risk": "low", "expected_catawiki_eur": [700, 1100], "max_buy_eur": 550 },
+    { "id": "BMM_CLASSIMA", "brand": "Baume & Mercier", "model_keywords": ["classima"], "risk": "low", "expected_catawiki_eur": [500, 900], "max_buy_eur": 400 },
+
+    { "id": "FC_CLASSICS", "brand": "Frederique Constant", "model_keywords": ["frederique constant", "classics"], "risk": "low", "expected_catawiki_eur": [650, 1100], "max_buy_eur": 500 },
+    { "id": "RW_FREELANCER", "brand": "Raymond Weil", "model_keywords": ["freelancer"], "risk": "low", "expected_catawiki_eur": [600, 1000], "max_buy_eur": 450 },
+
+    { "id": "SINN_556_104", "brand": "Sinn", "model_keywords": ["sinn 556", "sinn 104", "556", "104"], "risk": "low", "expected_catawiki_eur": [900, 1600], "max_buy_eur": 900 },
+    { "id": "JUN_MAX_BILL", "brand": "Junghans", "model_keywords": ["max bill", "junghans"], "risk": "low", "expected_catawiki_eur": [650, 1100], "max_buy_eur": 550 },
+
+    { "id": "TAG_AQUARACER", "brand": "TAG Heuer", "model_keywords": ["aquaracer", "waf", "way"], "risk": "medium", "expected_catawiki_eur": [850, 1500], "max_buy_eur": 800 },
+    { "id": "TAG_FORMULA1", "brand": "TAG Heuer", "model_keywords": ["formula 1", "waz", "caw", "wau"], "risk": "medium", "expected_catawiki_eur": [600, 1100], "max_buy_eur": 500 },
+
+    { "id": "TISSOT_SEASTAR_P80", "brand": "Tissot", "model_keywords": ["seastar", "powermatic 80"], "risk": "medium", "expected_catawiki_eur": [550, 950], "max_buy_eur": 420 },
+    { "id": "TISSOT_PRX_AUTO", "brand": "Tissot", "model_keywords": ["prx", "powermatic 80"], "risk": "medium", "expected_catawiki_eur": [550, 950], "max_buy_eur": 450 },
+
+    { "id": "HAM_KHAKI", "brand": "Hamilton", "model_keywords": ["khaki field", "murph"], "risk": "low", "expected_catawiki_eur": [600, 1100], "max_buy_eur": 550 },
+    { "id": "CERTINA_DS_ACTION", "brand": "Certina", "model_keywords": ["ds action", "powermatic 80", "diver"], "risk": "low", "expected_catawiki_eur": [550, 1000], "max_buy_eur": 450 },
+
+    { "id": "SEIKO_ALPINIST", "brand": "Seiko", "model_keywords": ["alpinist", "sarb017", "spb121"], "risk": "medium", "expected_catawiki_eur": [550, 1000], "max_buy_eur": 450 },
+    { "id": "SEIKO_TURTLE_SAMURAI", "brand": "Seiko", "model_keywords": ["turtle", "samurai", "srp", "sbd", "prospex"], "risk": "medium", "expected_catawiki_eur": [450, 900], "max_buy_eur": 350 },
+
+    { "id": "OMEGA_DEVILLE_VTG", "brand": "Omega", "model_keywords": ["de ville", "seamaster", "vintage"], "risk": "medium", "expected_catawiki_eur": [700, 1400], "max_buy_eur": 600 },
+    { "id": "ZENITH_VTG", "brand": "Zenith", "model_keywords": ["zenith", "vintage"], "risk": "medium", "expected_catawiki_eur": [700, 1400], "max_buy_eur": 600 },
+    { "id": "LONGINES_VTG", "brand": "Longines", "model_keywords": ["longines", "vintage"], "risk": "medium", "expected_catawiki_eur": [650, 1300], "max_buy_eur": 550 }
+  ]
+}
