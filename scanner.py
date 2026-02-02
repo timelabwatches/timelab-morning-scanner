@@ -1,3 +1,64 @@
+import json
+import os
+import re
+from datetime import datetime, timezone
+
+def load_target_list(path: str = "target_list.json") -> dict:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Missing {path}. Create it in repo root next to scanner.py")
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if "targets" not in data or not isinstance(data["targets"], list):
+        raise ValueError("target_list.json must contain a 'targets' array")
+    return data
+
+def normalize_keywords(model_keywords: list[str]) -> list[str]:
+    # Limpia espacios, baja a minúsculas, elimina duplicados
+    out = []
+    seen = set()
+    for kw in model_keywords:
+        kw2 = (kw or "").strip().lower()
+        if not kw2:
+            continue
+        kw2 = re.sub(r"\s+", " ", kw2)
+        if kw2 not in seen:
+            seen.add(kw2)
+            out.append(kw2)
+    return out
+
+def build_queries(targets: list[dict]) -> list[dict]:
+    """
+    Devuelve una lista de queries unificadas:
+    - 'query' es string para búsquedas tipo eBay
+    - 'max_buy_eur' y 'expected_catawiki_eur' sirven para tu filtro/ROI
+    - 'risk' para el fake filter
+    """
+    queries = []
+    for t in targets:
+        brand = (t.get("brand") or "").strip()
+        kws = normalize_keywords(t.get("model_keywords") or [])
+        if not brand or not kws:
+            continue
+
+        # Query principal: marca + keywords más específicas (sin repetir marca)
+        # Ej: "Oris big crown pointer date"
+        kw_join = " ".join([k for k in kws if brand.lower() not in k])
+        q = f"{brand} {kw_join}".strip()
+
+        queries.append({
+            "id": t.get("id", ""),
+            "brand": brand,
+            "query": q,
+            "keywords": kws,
+            "risk": (t.get("risk") or "medium").lower(),
+            "expected_catawiki_eur": t.get("expected_catawiki_eur") or [0, 0],
+            "max_buy_eur": float(t.get("max_buy_eur") or 0),
+        })
+    return queries
+
+def utc_now_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
 import os
 import re
 import time
