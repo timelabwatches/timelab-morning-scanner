@@ -1,72 +1,10 @@
-import json
-import os
-import re
-from datetime import datetime, timezone
-
-def load_target_list(path: str = "target_list.json") -> dict:
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Missing {path}. Create it in repo root next to scanner.py")
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if "targets" not in data or not isinstance(data["targets"], list):
-        raise ValueError("target_list.json must contain a 'targets' array")
-    return data
-
-def normalize_keywords(model_keywords: list[str]) -> list[str]:
-    # Limpia espacios, baja a minúsculas, elimina duplicados
-    out = []
-    seen = set()
-    for kw in model_keywords:
-        kw2 = (kw or "").strip().lower()
-        if not kw2:
-            continue
-        kw2 = re.sub(r"\s+", " ", kw2)
-        if kw2 not in seen:
-            seen.add(kw2)
-            out.append(kw2)
-    return out
-
-def build_queries(targets: list[dict]) -> list[dict]:
-    """
-    Devuelve una lista de queries unificadas:
-    - 'query' es string para búsquedas tipo eBay
-    - 'max_buy_eur' y 'expected_catawiki_eur' sirven para tu filtro/ROI
-    - 'risk' para el fake filter
-    """
-    queries = []
-    for t in targets:
-        brand = (t.get("brand") or "").strip()
-        kws = normalize_keywords(t.get("model_keywords") or [])
-        if not brand or not kws:
-            continue
-
-        # Query principal: marca + keywords más específicas (sin repetir marca)
-        # Ej: "Oris big crown pointer date"
-        kw_join = " ".join([k for k in kws if brand.lower() not in k])
-        q = f"{brand} {kw_join}".strip()
-
-        queries.append({
-            "id": t.get("id", ""),
-            "brand": brand,
-            "query": q,
-            "keywords": kws,
-            "risk": (t.get("risk") or "medium").lower(),
-            "expected_catawiki_eur": t.get("expected_catawiki_eur") or [0, 0],
-            "max_buy_eur": float(t.get("max_buy_eur") or 0),
-        })
-    return queries
-
-def utc_now_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
 import os
 import re
 import time
-import math
 import json
 import datetime as dt
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import requests
 from bs4 import BeautifulSoup
@@ -78,20 +16,19 @@ from bs4 import BeautifulSoup
 MIN_NET_EUR = 120
 MIN_NET_ROI = 0.25
 MIN_MATCH_SCORE = 75
-ALLOW_FAKE_RISK = {"low", "medium"}  # never "high"
+ALLOW_FAKE_RISK = {"low", "medium"}  # nunca "high"
 
 # TIMELAB cost model (ajustable)
 CATWIKI_COMMISSION = 0.125          # 12.5% sobre martillo (aprox)
-PAYMENT_PROCESSING = 0.0            # si quieres modelar PayPal/Stripe etc
-PACKAGING_EUR = 5.0                 # coste medio empaquetado
-MISC_EUR = 5.0                      # limpieza, consumibles, etc
-SHIP_ARBITRAGE_EUR = 35.0           # tu arbitraje a favor (ajústalo si cambia)
+PAYMENT_PROCESSING = 0.0            # si quieres modelar procesado pago
+PACKAGING_EUR = 5.0                 # empaquetado medio
+MISC_EUR = 5.0                      # consumibles / limpieza
+SHIP_ARBITRAGE_EUR = 35.0           # arbitraje envío a tu favor (ajústalo)
 
-# Impuestos (placeholder: ajústalo según tu régimen real / cálculo neto)
-# Si estás en REBU, el IVA va sobre margen. Aquí ponemos un "impuesto efectivo" conservador.
-EFFECTIVE_TAX_RATE_ON_PROFIT = 0.15  # 15% sobre beneficio estimado (conservador; ajustable)
+# Impuestos (placeholder conservador; ajusta a tu régimen real)
+EFFECTIVE_TAX_RATE_ON_PROFIT = 0.15
 
-# eBay: dominios UE (preferimos España primero)
+# eBay: dominios UE
 EBAY_SEARCH_BASES = [
     "https://www.ebay.es/sch/i.html",
     "https://www.ebay.fr/sch/i.html",
@@ -113,57 +50,18 @@ HEADERS = {
 }
 
 # =========================
-# TARGET LIST v1.0 (MVP)
+# DATA STRUCTURES
 # =========================
 
 @dataclass
 class TargetModel:
     key: str
-    keywords: List[str]        # must include brand/model tokens
-    refs: List[str]            # ref patterns (optional)
-    tier: str                  # A-E
+    keywords: List[str]        # tokens para búsqueda y scoring
+    refs: List[str]            # refs opcionales
+    tier: str                  # A-E (informativo)
     fake_risk: str             # low/medium/high
     catwiki_close_med: float   # benchmark cierre medio (EUR)
     buy_max: float             # compra máxima objetivo (EUR)
-
-TARGETS: List[TargetModel] = [
-    # ---- TISSOT ----
-    TargetModel("tissot_seastar_pr516", ["tissot", "seastar", "pr", "516"], [], "A", "low", 750, 380),
-    TargetModel("tissot_pr516_chrono", ["tissot", "pr", "516", "chrono"], ["7733", "7734"], "B", "low", 900, 450),
-    TargetModel("tissot_visodate_auto", ["tissot", "visodate", "automatic"], [], "A", "low", 650, 320),
-    TargetModel("tissot_navigator", ["tissot", "navigator"], [], "B", "low", 700, 350),
-
-    # ---- TAG HEUER ----
-    TargetModel("tag_f1_waz1110", ["tag", "heuer", "formula", "1"], ["waz1110", "waz1010", "caz101"], "A", "medium", 850, 450),
-    TargetModel("tag_2000", ["tag", "heuer", "2000"], [], "A", "medium", 800, 420),
-    TargetModel("tag_4000", ["tag", "heuer", "4000"], [], "B", "medium", 700, 380),
-    TargetModel("tag_kirium", ["tag", "heuer", "kirium"], [], "B", "medium", 700, 380),
-
-    # ---- LONGINES ----
-    TargetModel("longines_conquest_vintage", ["longines", "conquest"], [], "A", "low", 900, 450),
-    TargetModel("longines_admiral_hf", ["longines", "admiral", "hf"], [], "A", "low", 850, 420),
-    TargetModel("longines_flagship_auto", ["longines", "flagship", "automatic"], [], "B", "low", 800, 400),
-
-    # ---- OMEGA (más riesgo, controlado) ----
-    TargetModel("omega_seamaster_cosmic", ["omega", "seamaster", "cosmic"], [], "B", "high", 1100, 520),
-    TargetModel("omega_geneve_auto", ["omega", "geneve", "automatic"], [], "B", "high", 950, 480),
-    TargetModel("omega_deville_prestige", ["omega", "de", "ville", "prestige"], [], "B", "high", 900, 450),
-
-    # ---- ZENITH ----
-    TargetModel("zenith_cosmopolitan", ["zenith", "cosmopolitan"], [], "B", "medium", 850, 420),
-    TargetModel("zenith_defy_quartz", ["zenith", "defy", "quartz"], [], "C", "medium", 750, 380),
-
-    # ---- SEIKO CHRONO (más riesgo de piezas/franken, pero no “fakes” típicos) ----
-    TargetModel("seiko_6139_pogue", ["seiko", "6139", "pogue"], ["6139"], "B", "medium", 1200, 600),
-    TargetModel("seiko_6138", ["seiko", "6138"], ["6138"], "C", "medium", 1100, 550),
-]
-
-# Importante: nunca permitir "high" (Omega) en el filtro final según tu regla
-# => en el filtro final, Omega quedará fuera automáticamente hasta que definamos una lógica anti-fake más fuerte.
-
-# =========================
-# DATA STRUCTURES
-# =========================
 
 @dataclass
 class Listing:
@@ -185,6 +83,7 @@ class Candidate:
     net_profit: float
     net_roi: float
 
+
 # =========================
 # HELPERS
 # =========================
@@ -195,33 +94,34 @@ def norm(s: str) -> str:
 def extract_price(text: str) -> Optional[float]:
     if not text:
         return None
+    # Normaliza separadores: eBay puede usar puntos/commas según país
     t = text.replace("\xa0", " ").replace(".", "").replace(",", ".")
     m = re.search(r"(\d+(?:\.\d+)?)", t)
     if not m:
         return None
     try:
         return float(m.group(1))
-    except:
+    except Exception:
         return None
 
 def is_eu_location(loc: str) -> bool:
     l = norm(loc)
     if not l:
-        return True  # si no tenemos ubicación, no descartamos en MVP
+        return True  # si no hay ubicación, no descartamos en MVP
     return any(c in l for c in EU_COUNTRIES)
 
 def compute_match_score(title: str, target: TargetModel) -> int:
     t = norm(title)
     score = 0
 
-    # keywords
+    # keywords (peso fuerte)
     kw_hits = 0
     for kw in target.keywords:
         if norm(kw) in t:
             kw_hits += 1
     score += int(60 * (kw_hits / max(1, len(target.keywords))))
 
-    # refs
+    # refs (peso medio)
     if target.refs:
         ref_hits = 0
         for r in target.refs:
@@ -229,31 +129,121 @@ def compute_match_score(title: str, target: TargetModel) -> int:
                 ref_hits += 1
         score += int(25 * (ref_hits / max(1, len(target.refs))))
     else:
-        score += 10  # pequeño bonus si no hay ref requerida
+        score += 10
 
-    # penalties for suspicious words
-    suspicious = ["replica", "copy", "imitacion", "imitation", "fake"]
+    # penalizaciones por palabras sospechosas
+    suspicious = ["replica", "copy", "imitacion", "imitación", "imitation", "fake"]
     if any(w in t for w in suspicious):
         score -= 50
 
-    # cap
-    score = max(0, min(100, score))
-    return score
+    return max(0, min(100, score))
 
 def estimate_net_profit(buy_price: float, ship_in: float, expected_close: float) -> Tuple[float, float]:
     """
-    buy_price: precio anuncio
-    ship_in: envío entrada
-    expected_close: cierre esperado catawiki (martillo aprox)
+    Modelo económico TIMELAB (placeholder conservador).
+    - Revenue: martillo esperado + arbitraje envío
+    - Fees: comisión Catawiki sobre martillo
+    - Costs: compra + envío + packaging + misc
+    - Taxes: % efectivo sobre beneficio positivo
     """
     cost_in = buy_price + ship_in + PACKAGING_EUR + MISC_EUR
-    revenue_gross = expected_close + SHIP_ARBITRAGE_EUR  # arbitraje a favor
+    revenue_gross = expected_close + SHIP_ARBITRAGE_EUR
     fees = expected_close * CATWIKI_COMMISSION + PAYMENT_PROCESSING
     profit_before_tax = revenue_gross - fees - cost_in
     tax = max(0.0, profit_before_tax) * EFFECTIVE_TAX_RATE_ON_PROFIT
     net = profit_before_tax - tax
     roi = net / max(1.0, cost_in)
     return net, roi
+
+
+# =========================
+# TARGET LIST LOADER (JSON)
+# =========================
+
+def load_target_list_json(path: str = "target_list.json") -> dict:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Missing {path}. Create it next to scanner.py")
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if "targets" not in data or not isinstance(data["targets"], list):
+        raise ValueError("target_list.json must contain a 'targets' array")
+    return data
+
+def keywords_from_json(model_keywords: List[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for kw in model_keywords or []:
+        kw2 = norm(kw)
+        if not kw2:
+            continue
+        if kw2 not in seen:
+            seen.add(kw2)
+            out.append(kw2)
+    return out
+
+def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
+    """
+    Convierte target_list.json -> TargetModel compatible con tu pipeline actual.
+    - catwiki_close_med: media del rango expected_catawiki_eur
+    - buy_max: max_buy_eur
+    - fake_risk: risk
+    """
+    data = load_target_list_json(path)
+    targets_json = data["targets"]
+
+    targets: List[TargetModel] = []
+    for tj in targets_json:
+        brand = (tj.get("brand") or "").strip()
+        risk = (tj.get("risk") or "medium").strip().lower()
+        tier = (tj.get("tier") or "B").strip().upper()
+
+        kws = keywords_from_json(tj.get("model_keywords") or [])
+        if not brand or not kws:
+            continue
+
+        # Asegura que la marca está en keywords (para eBay_search y scoring)
+        if norm(brand) not in kws:
+            kws = [norm(brand)] + kws
+
+        exp = tj.get("expected_catawiki_eur") or [0, 0]
+        try:
+            lo = float(exp[0]) if len(exp) > 0 else 0.0
+            hi = float(exp[1]) if len(exp) > 1 else 0.0
+        except Exception:
+            lo, hi = 0.0, 0.0
+
+        close_med = (lo + hi) / 2.0 if (lo > 0 and hi > 0) else max(lo, hi, 0.0)
+
+        try:
+            buy_max = float(tj.get("max_buy_eur") or 0.0)
+        except Exception:
+            buy_max = 0.0
+
+        key = (tj.get("id") or f"{brand}_{kws[0]}").strip()
+
+        targets.append(TargetModel(
+            key=key,
+            keywords=kws,
+            refs=[],            # fase 2: meter refs por modelo
+            tier=tier,
+            fake_risk=risk,
+            catwiki_close_med=close_med,
+            buy_max=buy_max
+        ))
+
+    if not targets:
+        raise ValueError("target_list.json loaded but produced 0 valid targets")
+
+    return targets
+
+def fallback_targets_min() -> List[TargetModel]:
+    # Fallback mínimo por si el JSON falla (para no romper el bot)
+    return [
+        TargetModel("tag_f1", ["tag", "heuer", "formula", "1"], ["waz1110", "waz1010", "caz101"], "A", "medium", 850, 500),
+        TargetModel("longines_conquest", ["longines", "conquest"], [], "A", "low", 900, 550),
+        TargetModel("oris_aquis", ["oris", "aquis", "date"], [], "A", "low", 1000, 750),
+    ]
+
 
 # =========================
 # EBAY SCRAPER (HTML)
@@ -267,7 +257,7 @@ def ebay_search(model: TargetModel, base_url: str, max_pages: int = 1) -> List[L
         params = {
             "_nkw": query,
             "_sop": "10",   # Newly listed
-            "LH_BIN": "1",  # Buy It Now (reduce auction noise)
+            "LH_BIN": "1",  # Buy It Now
             "_pgn": str(page),
         }
 
@@ -318,9 +308,21 @@ def ebay_search(model: TargetModel, base_url: str, max_pages: int = 1) -> List[L
                 location_text=loc
             ))
 
-        time.sleep(1.0)  # pequeño throttle
+        time.sleep(1.0)  # throttle suave
 
     return out
+
+
+# =========================
+# CASHCONVERTERS (placeholder hook)
+# =========================
+def cashconverters_search(_model: TargetModel) -> List[Listing]:
+    """
+    PASO SIGUIENTE: aquí implementamos scraping de CashConverters (relojes de pulsera).
+    Lo dejo como stub para integrar sin tocar el resto del pipeline.
+    """
+    return []
+
 
 # =========================
 # TELEGRAM
@@ -340,6 +342,7 @@ def tg_send(text: str) -> None:
     print("Telegram response:", r.text)
     r.raise_for_status()
 
+
 # =========================
 # MAIN
 # =========================
@@ -347,15 +350,31 @@ def tg_send(text: str) -> None:
 def main():
     now_utc = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    # 1) Collect listings (eBay UE)
+    # Load targets from JSON
+    try:
+        targets = load_targets_from_json("target_list.json")
+        print(f"[OK] Loaded {len(targets)} targets from target_list.json")
+    except Exception as e:
+        print("[WARN] Using fallback targets due to target_list.json error:", str(e))
+        targets = fallback_targets_min()
+
+    # 1) Collect listings (eBay UE + (future) CashConverters)
     all_listings: List[Listing] = []
-    for t in TARGETS:
-        # MVP: solo 1 página por marketplace para no saturar
+
+    # eBay
+    for t in targets:
         for base in EBAY_SEARCH_BASES:
             try:
                 all_listings.extend(ebay_search(t, base_url=base, max_pages=1))
             except Exception as e:
                 print("EBAY ERROR:", base, t.key, str(e))
+
+    # CashConverters (stub ahora; en el siguiente paso lo activamos)
+    # for t in targets:
+    #     try:
+    #         all_listings.extend(cashconverters_search(t))
+    #     except Exception as e:
+    #         print("CC ERROR:", t.key, str(e))
 
     # 2) Score & filter
     candidates: List[Candidate] = []
@@ -363,16 +382,19 @@ def main():
         if not is_eu_location(li.location_text):
             continue
 
-        for t in TARGETS:
+        for t in targets:
             ms = compute_match_score(li.title, t)
             if ms < 50:
                 continue
 
             # Comprar por debajo de objetivo (flexible)
-            if li.price_eur > (t.buy_max * 1.15):
+            if t.buy_max > 0 and li.price_eur > (t.buy_max * 1.15):
                 continue
 
             expected_close = t.catwiki_close_med
+            if expected_close <= 0:
+                continue
+
             net, roi = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
 
             candidates.append(Candidate(
@@ -402,7 +424,14 @@ def main():
 
     # 5) Telegram report
     if not top:
-        msg = f"🕗 TIMELAB Morning Scan (eBay UE)\nTimestamp: {now_utc}\n\nNo hay oportunidades que pasen los filtros:\n- ≥ {MIN_NET_EUR}€ neto o ≥ {int(MIN_NET_ROI*100)}% ROI neto\n- match ≥ {MIN_MATCH_SCORE}/100\n- fake risk low/medium"
+        msg = (
+            f"🕗 TIMELAB Morning Scan (eBay UE)\n"
+            f"Timestamp: {now_utc}\n\n"
+            f"No hay oportunidades que pasen los filtros:\n"
+            f"- ≥ {MIN_NET_EUR}€ neto o ≥ {int(MIN_NET_ROI*100)}% ROI neto\n"
+            f"- match ≥ {MIN_MATCH_SCORE}/100\n"
+            f"- fake risk low/medium"
+        )
         tg_send(msg)
         return
 
@@ -424,6 +453,7 @@ def main():
         )
 
     tg_send("\n".join(lines))
+
 
 if __name__ == "__main__":
     main()
