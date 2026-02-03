@@ -3,8 +3,11 @@ name: timelab-morning-scanner-v2
 on:
   workflow_dispatch:
   schedule:
-    # 07:00 Europe/Madrid ≈ 06:00 UTC (invierno). Ajusta si quieres.
+    # 07:00 Europe/Madrid = 06:00 UTC (invierno)
     - cron: "0 6 * * *"
+  # Opcional: si quieres que corra al hacer cambios en main (no PR)
+  push:
+    branches: [ "main" ]
 
 jobs:
   run-scanner:
@@ -33,17 +36,14 @@ jobs:
           # eBay
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-          EBAY_MARKETPLACE_ID: EBAY_ES
+          EBAY_MARKETPLACE_ID: "EBAY_ES"
 
-          # Calibración (puedes cambiar aquí sin tocar código)
-          MIN_NET_EUR: "20"
-          MIN_NET_ROI: "0.05"
-          MIN_MATCH_SCORE: "50"
+          # Calibración (puedes tocar luego)
+          MIN_NET_EUR: "-10"
+          MIN_NET_ROI: "-0.05"
+          MIN_MATCH_SCORE: "45"
+          BUY_MAX_MULT: "10"
           ALLOW_FAKE_RISK: "low,medium"
-          BUY_MAX_MULT: "1.25"
-          EBAY_LIMIT: "50"
-          EBAY_THROTTLE_S: "0.35"
-          HTTP_TIMEOUT: "25"
 
         run: |
           python scanner.py
