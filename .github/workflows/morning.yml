@@ -3,12 +3,13 @@ name: timelab-morning-scanner-v2
 on:
   workflow_dispatch:
   schedule:
-    # 07:00 Europe/Madrid = 06:00 UTC (invierno)
+    # 07:00 Europe/Madrid ≈ 06:00 UTC (invierno). Ajusta si quieres.
     - cron: "0 6 * * *"
 
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,20 +30,20 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-          # eBay API
+          # eBay
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           EBAY_MARKETPLACE_ID: EBAY_ES
 
-          # Calibración (sube a producción cuando quieras)
-          MIN_NET_EUR: "-10"
-          MIN_NET_ROI: "-0.05"
-          MIN_MATCH_SCORE: "45"
-          BUY_MAX_MULT: "10"
-
-          # Límite/balance
+          # Calibración (puedes cambiar aquí sin tocar código)
+          MIN_NET_EUR: "20"
+          MIN_NET_ROI: "0.05"
+          MIN_MATCH_SCORE: "50"
+          ALLOW_FAKE_RISK: "low,medium"
+          BUY_MAX_MULT: "1.25"
           EBAY_LIMIT: "50"
           EBAY_THROTTLE_S: "0.35"
           HTTP_TIMEOUT: "25"
+
         run: |
           python scanner.py
