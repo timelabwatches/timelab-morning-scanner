@@ -129,19 +129,17 @@ GLOBAL_PARTS_TERMS = {
     "lot of", "bundle"
 }
 
-# ✅ NUEVO: rechazo duro de “incompleto / solo piezas” (aunque ponga automatic)
-INCOMPLETE_HARD_TERMS |= {
+# ✅ FIX: definir antes de usar (sin "|=")
+INCOMPLETE_HARD_TERMS: Set[str] = {
     # ES
     "sin mecanismo", "falta movimiento", "falta el movimiento", "caja vacía", "caja vacia",
     "sin maquinaria", "sin máquina", "sin maquina", "solo caja", "caja sola",
-
+    "para piezas", "para repuestos", "repuestos",
     # IT
     "senza meccanismo", "senza meccanica", "senza macchina", "manca il movimento",
     "movimento mancante", "solo cassa", "cassa vuota",
-
     # FR
     "boîtier seul", "boitier seul", "sans mecanisme", "sans mécanisme", "sans mouvement",
-
     # DE
     "ohne uhrwerk", "ohne werk", "gehäuse ohne", "gehaeuse ohne"
 }
@@ -160,7 +158,7 @@ GLOBAL_BOOST_TERMS = {
     "nos", "new old stock", "mint", "full set",
     "serviced", "service", "revised", "revisionato", "revisado", "revisión",
     "working", "works", "runs", "tested", "fonctionne", "funziona", "läuft",
-    "caja y papeles", "box and papers"
+    "caja y papeles", "box and papers", "caja y documentación", "caja y documentacion"
 }
 
 GLOBAL_BAD_TERMS = {
@@ -192,10 +190,8 @@ def global_noise_reject(text: str) -> Optional[str]:
     t = norm(text)
     if not t:
         return "empty_text"
-    # ✅ primero: incompletos / piezas
     if has_incomplete_hard_terms(t):
         return "incomplete_parts"
-    # ✅ luego: averiado / no funciona
     if title_has_any(t, GLOBAL_HARD_BAD_TERMS):
         return "hard_bad_terms"
     return None
@@ -212,7 +208,8 @@ class TargetModel:
     refs: List[str]
     tier: str
     fake_risk: str
-    catwiki_close_med: float
+    catwiki_p50: float
+    catwiki_p75: float
     buy_max: float
     query: str
     ebay_category_id: Optional[str] = None
@@ -235,7 +232,7 @@ class Listing:
     condition: str = ""
     condition_id: str = ""
     short_desc: str = ""
-    category_id: str = ""  # ✅ NUEVO
+    category_id: str = ""
 
 @dataclass
 class Candidate:
@@ -343,6 +340,17 @@ def compute_condition_score(text: str, target: TargetModel, condition_str: str =
 
     return max(-50, min(25, score))
 
+def should_use_p75(detail_text: str, cscore: int) -> bool:
+    if cscore < 15:
+        return False
+    t = norm(detail_text)
+    strong = {
+        "nos", "new old stock", "full set", "box and papers", "caja y papeles",
+        "serviced", "service", "revised", "revisionato", "revisado", "revisión", "revision",
+        "mint", "like new", "nuevo con caja", "con caja y documentación", "con caja y documentacion"
+    }
+    return any(x in t for x in strong)
+
 
 # =========================
 # TARGET LIST
@@ -372,10 +380,21 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
         else:
             kws = [brand] + [k for k in kws if k != brand]
 
-        exp = t.get("expected_catawiki_eur", [0, 0])
-        lo = float(exp[0]) if isinstance(exp, list) and len(exp) > 0 else 0.0
-        hi = float(exp[1]) if isinstance(exp, list) and len(exp) > 1 else 0.0
-        close_med = (lo + hi) / 2.0 if (lo > 0 and hi > 0) else max(lo, hi, 0.0)
+        # ✅ NUEVO: estimación conservadora global
+        est = t.get("catawiki_estimate") or {}
+        p50 = float(est.get("p50", 0.0) or 0.0)
+        p75 = float(est.get("p75", 0.0) or 0.0)
+
+        # fallback compat
+        if p50 <= 0:
+            exp = t.get("expected_catawiki_eur", [0, 0])
+            lo = float(exp[0]) if isinstance(exp, list) and len(exp) > 0 else 0.0
+            hi = float(exp[1]) if isinstance(exp, list) and len(exp) > 1 else 0.0
+            p50 = lo if lo > 0 else hi
+            p75 = hi if hi > 0 else p50
+
+        if p75 <= 0:
+            p75 = p50
 
         buy_max = float(t.get("max_buy_eur", 0.0) or 0.0)
 
@@ -389,7 +408,8 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
             refs=t.get("refs", []) or [],
             tier=str(t.get("tier", "B")),
             fake_risk=str(t.get("risk", "medium")).lower(),
-            catwiki_close_med=close_med,
+            catwiki_p50=p50,
+            catwiki_p75=p75,
             buy_max=buy_max,
             query=query,
             ebay_category_id=(t.get("ebay_category_id") or None),
@@ -480,7 +500,7 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
             condition=cond,
             condition_id=cond_id,
             short_desc="",
-            category_id=""  # se rellena en detalle
+            category_id=""
         ))
 
     return out
@@ -515,18 +535,15 @@ def eur_value(money: Dict) -> Optional[float]:
     return fv
 
 def extract_category_id(detail: Dict) -> str:
-    # eBay no siempre es consistente; probamos varios campos
     for k in ("primaryCategoryId", "categoryId"):
         v = detail.get(k)
         if isinstance(v, str) and v.strip():
             return v.strip()
-    # a veces viene en categoryPath (string)
     cp = detail.get("categoryPath")
     if isinstance(cp, str):
         m = re.search(r"\b(\d{4,})\b", cp)
         if m:
             return m.group(1)
-    # a veces como lista de categorías
     cats = detail.get("categories")
     if isinstance(cats, list) and cats:
         c0 = cats[0]
@@ -564,8 +581,6 @@ def enrich_listing_from_detail(li: Listing, detail: Dict) -> Listing:
         li.location_text = new_loc
 
     li.url = clean_url(li.url)
-
-    # ✅ categoría
     li.category_id = extract_category_id(detail) or li.category_id
 
     return li
@@ -671,13 +686,12 @@ def main():
         if not best_t:
             continue
 
-        expected_close = best_t.catwiki_close_med if best_t.catwiki_close_med > 0 else max(li.price_eur * 1.8, li.price_eur + 150)
+        expected_close = best_t.catwiki_p50 if best_t.catwiki_p50 > 0 else max(li.price_eur * 1.5, li.price_eur + 120)
         net, _ = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
         prescored.append((best_ms, net, li, best_t))
 
     prescored.sort(key=lambda x: (x[0], x[1]), reverse=True)
     to_enrich = prescored[:max(0, DETAIL_FETCH_N)]
-    enrich_ids = {li.item_id for _, _, li, _ in to_enrich}
 
     # FASE 2: DETAIL ENRICHMENT (solo TOP N)
     enriched_count = 0
@@ -699,7 +713,7 @@ def main():
         if not is_eu_location(li.location_text):
             continue
 
-        # ✅ filtro duro por categoría (si ya la tenemos)
+        # filtro duro por categoría (si ya la tenemos)
         if li.category_id and EBAY_ALLOWED_CATEGORY_IDS and li.category_id not in EBAY_ALLOWED_CATEGORY_IDS:
             continue
 
@@ -709,7 +723,7 @@ def main():
         if li.condition:
             detail_text += " " + li.condition
 
-        # ✅ filtro duro por incompleto / piezas
+        # filtro duro por incompleto / piezas
         if global_noise_reject(detail_text) is not None:
             continue
 
@@ -729,9 +743,13 @@ def main():
         if cscore == -999:
             continue
 
-        expected_close = best_t.catwiki_close_med if best_t.catwiki_close_med > 0 else max(li.price_eur * 1.8, li.price_eur + 150)
+        expected_close = best_t.catwiki_p50 if best_t.catwiki_p50 > 0 else max(li.price_eur * 1.5, li.price_eur + 120)
+
+        if best_t.catwiki_p75 > expected_close and should_use_p75(detail_text, cscore):
+            expected_close = best_t.catwiki_p75
+
         if cscore >= 15:
-            expected_close *= 1.05
+            expected_close *= 1.03
         elif cscore <= -35:
             expected_close *= 0.85
         elif cscore <= -20:
