@@ -80,15 +80,14 @@ BANNED_BRANDS = {
     "welder", "ice watch", "icewatch", "tommy hilfiger", "calvin klein",
 }
 
-# Keywords negativos fuertes
+# Keywords negativos fuertes (ojo: se aplican SOLO al título)
 BANNED_KEYWORDS = {
     "smartwatch", "reloj inteligente", "galaxy watch", "apple watch", "fitbit",
-    "pulsera actividad", "activity", "fitness",
+    "pulsera actividad", "actividad", "fitness",
     "sin funcionar", "no funciona", "para piezas", "solo piezas",
     "incompleto", "averiado", "defectuoso", "rotura", "no arranca",
 }
 
-# Keywords positivos suaves (solo ajustan “cond”)
 POSITIVE_KEYWORDS = {"revisado", "funciona", "buen estado", "perfecto", "recien revisado", "recién revisado"}
 
 PRICE_RE = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*€")
@@ -130,8 +129,8 @@ def canon(s: str) -> str:
 REPUTABLE_CANON = {canon(b) for b in REPUTABLE_BRANDS}
 BANNED_CANON = {canon(b) for b in BANNED_BRANDS}
 
-def has_banned_keywords(text: str) -> bool:
-    t = canon(text)
+def has_banned_keywords_title_only(title: str) -> bool:
+    t = canon(title)
     return any(canon(k) in t for k in BANNED_KEYWORDS)
 
 def extract_brand_from_text(text: str) -> Optional[str]:
@@ -143,6 +142,18 @@ def extract_brand_from_text(text: str) -> Optional[str]:
         if b and b in t:
             return f"__banned__:{b}"
     return None
+
+def extract_brand_from_breadcrumbs(soup: BeautifulSoup) -> str:
+    crumbs = soup.select("nav a, nav span, ol li a, ol li span, ul li a, ul li span")
+    for node in crumbs:
+        txt = canon(node.get_text(" ", strip=True))
+        if not txt:
+            continue
+        if txt in REPUTABLE_CANON:
+            return txt
+        if txt in BANNED_CANON:
+            return f"__banned__:{txt}"
+    return ""
 
 def condition_boost(cond: str) -> float:
     c = canon(cond)
@@ -223,23 +234,6 @@ def extract_listing_urls(listing_html: str) -> List[Tuple[str, str]]:
         out.append((cc_id, url))
     return out
 
-def extract_brand_from_breadcrumbs(soup: BeautifulSoup) -> str:
-    """
-    CashConverters suele poner la marca en el breadcrumb:
-    'Relojes > ... > Lotus' o similar.
-    Intentamos encontrar cualquier anchor cuyo texto sea una marca conocida (reputable o banned).
-    """
-    crumbs = soup.select("nav a, nav span, ol li a, ol li span, ul li a, ul li span")
-    for node in crumbs:
-        txt = canon(node.get_text(" ", strip=True))
-        if not txt:
-            continue
-        if txt in REPUTABLE_CANON:
-            return txt
-        if txt in BANNED_CANON:
-            return f"__banned__:{txt}"
-    return ""
-
 def parse_detail_page(url: str) -> Dict:
     html, status = fetch(url)
     soup = BeautifulSoup(html, "lxml")
@@ -262,22 +256,18 @@ def parse_detail_page(url: str) -> Dict:
             estado = c
             break
 
-    # Disponibilidad (heurística simple)
     disponibilidad = "envío" if ("a domicilio" in lower or "envio" in lower) else "tienda"
 
-    # Tienda (heurística simple)
     tienda = ""
     for s in soup.stripped_strings:
         if "cash converters" in s.lower():
             tienda = s.strip()
             break
 
-    # ✅ Marca: primero breadcrumbs (más fiable), luego fallback a texto
     brand = extract_brand_from_breadcrumbs(soup)
     if not brand:
         brand = extract_brand_from_text(title + " " + title_tag + " " + text) or ""
 
-    # Page ok
     page_ok = bool(title) and (price is not None)
 
     return {
@@ -353,23 +343,24 @@ def run():
                     c_page_bad += 1
                     continue
 
-                # keywords negativos (smartwatch / piezas / no funciona)
-                if has_banned_keywords(data.get("title", "") + " " + data.get("raw_text", "")):
-                    continue
-
+                # ---- Clasifica marca SIEMPRE primero (clave del fix) ----
                 brand_class = classify_brand(data.get("brand", ""))
 
-                # ✅ contadores consistentes
-                if brand_class == "reputable":
-                    c_brand_reputable += 1
-                elif brand_class == "banned_brand":
+                if brand_class == "banned_brand":
                     c_brand_banned += 1
                     continue
-                elif brand_class == "not_reputable":
-                    c_brand_notrep += 1
+
+                if brand_class != "reputable":
+                    if brand_class == "not_reputable":
+                        c_brand_notrep += 1
+                    else:
+                        c_brand_none += 1
                     continue
-                else:
-                    c_brand_none += 1
+
+                c_brand_reputable += 1
+
+                # ---- Fix clave: keywords negativas SOLO en el título ----
+                if has_banned_keywords_title_only(data.get("title", "")):
                     continue
 
                 title = data.get("title", "")
