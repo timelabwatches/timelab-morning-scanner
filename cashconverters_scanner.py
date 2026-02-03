@@ -255,4 +255,185 @@ def parse_detail_page(detail_html: str) -> Dict:
 
     text = soup.get_text(" ", strip=True)
     m = PRICE_RE.search(text)
-    price = euro_to_float(m
+    price = euro_to_float(m.group(1)) if m else None
+
+    lower = normalize(text)
+    estado = None
+    for c in ("perfecto", "muy bueno", "bueno", "usado"):
+        if c in lower:
+            estado = c
+            break
+
+    disponibilidad = "envío" if ("a domicilio" in lower or "envio" in lower) else "tienda"
+
+    # tienda: por ahora muy básica (CashConverters incluye mucho texto)
+    tienda = None
+    for s in soup.stripped_strings:
+        if "cash converters" in s.lower():
+            tienda = s.strip()
+            break
+
+    # descripción (si existe un bloque de texto largo)
+    desc = ""
+    desc_el = soup.select_one('[class*="description"], [id*="description"]')
+    if desc_el:
+        desc = desc_el.get_text(" ", strip=True)
+
+    return {
+        "title": title,
+        "price": price,
+        "estado": estado or "",
+        "disponibilidad": disponibilidad,
+        "tienda": tienda or "",
+        "description": desc,
+        "raw_text": text,
+    }
+
+def is_reputable_listing(title: str, raw_text: str) -> bool:
+    t = normalize(title + " " + raw_text)
+
+    # keyword bans (smartwatch / piezas / no funciona)
+    if has_banned_keywords(t):
+        return False
+
+    b = brand_from_text(t)
+    if b is None:
+        # Si no detectamos marca, descartamos: evita junk
+        return False
+    if b.startswith("__banned__"):
+        return False
+
+    # debe estar en whitelist de reputadas
+    return True
+
+def cond_label(estado: str, raw_text: str) -> str:
+    t = normalize((estado or "") + " " + (raw_text or ""))
+    score = 0
+    if any(k in t for k in POSITIVE_KEYWORDS):
+        score += 1
+    if any(k in t for k in BANNED_KEYWORDS):
+        score -= 2
+    return f"{estado or '—'}"
+
+def run():
+    targets = load_targets("target_list.json")
+
+    dedup = set()
+    scanned = 0
+    opportunities = []
+
+    for seed in SEED_URLS:
+        start = 0
+        while scanned < CC_MAX_ITEMS:
+            page_url = build_page_url(seed, start)
+            listing_html = fetch(page_url)
+            pairs = extract_listing_urls(listing_html)
+            if not pairs:
+                break
+
+            for cc_id, url in pairs:
+                if cc_id in dedup:
+                    continue
+                dedup.add(cc_id)
+
+                detail_html = fetch(url)
+                data = parse_detail_page(detail_html)
+
+                scanned += 1
+                time.sleep(CC_THROTTLE_S)
+
+                title = data.get("title", "")
+                raw_text = data.get("raw_text", "")
+
+                # filtro marcas reputadas + exclusiones
+                if not is_reputable_listing(title, raw_text):
+                    if scanned >= CC_MAX_ITEMS:
+                        break
+                    continue
+
+                buy = data.get("price") or 0.0
+                shipping = DEFAULT_SHIPPING_EUR
+
+                # match con targets
+                best_target, match = pick_best_target(title, targets)
+                if not best_target or match < MIN_MATCH_SCORE:
+                    if scanned >= CC_MAX_ITEMS:
+                        break
+                    continue
+
+                close_est = estimate_close(best_target, data.get("estado", ""))
+                net, roi = estimate_net_profit(buy, shipping, close_est)
+
+                # filtros TIMELAB (net o ROI)
+                if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
+                    if scanned >= CC_MAX_ITEMS:
+                        break
+                    continue
+
+                opportunities.append({
+                    "title": title,
+                    "url": url,
+                    "buy": buy,
+                    "shipping": shipping,
+                    "close_est": close_est,
+                    "net": net,
+                    "roi": roi,
+                    "match": match,
+                    "target": best_target.get("id", "—"),
+                    "cond": cond_label(data.get("estado", ""), raw_text),
+                    "shop": data.get("tienda") or "—",
+                })
+
+                if scanned >= CC_MAX_ITEMS:
+                    break
+
+            start += PAGE_SIZE
+            time.sleep(CC_THROTTLE_S)
+
+            if scanned >= CC_MAX_ITEMS:
+                break
+
+        if scanned >= CC_MAX_ITEMS:
+            break
+
+    # Orden: net desc, match desc
+    opportunities.sort(key=lambda x: (x["net"], x["match"]), reverse=True)
+    top = opportunities[:10]
+
+    header = f"🕗 TIMELAB Morning Scan — TOP {len(top)} (CashConverters ES)"
+    lines = [header]
+
+    for i, it in enumerate(top, 1):
+        buy = f"{it['buy']:.2f}€"
+        ship = f"{it['shipping']:.2f}€"
+        close = f"{it['close_est']:.0f}€" if it["close_est"] > 0 else "—"
+        net = f"{it['net']:.0f}€"
+        roi = f"{it['roi']*100:.0f}%"
+        lines.append(
+            f"{i}) [cc] {it['title']}\n"
+            f"   💶 Compra: {buy} | 🚚 Envío: {ship} | 🎯 Cierre est.: {close}\n"
+            f"   ✅ Neto est.: {net} | ROI: {roi} | Match: {it['match']} | Cond: {it['cond']}\n"
+            f"   🧩 Target: {it['target']}\n"
+            f"   📍 {it['shop']}\n"
+            f"   🔗 {it['url']}"
+        )
+
+    # Si no hay oportunidades, manda TOP 0 pero sin spam
+    if not top:
+        lines.append(
+            "\nNo se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI)."
+        )
+
+    tg_send("\n\n".join(lines))
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except Exception:
+        err = traceback.format_exc()
+        try:
+            tg_send("❌ TIMELAB CashConverters scanner crashed\n\n" + err[:3500])
+        except Exception:
+            pass
+        raise SystemExit(0)
