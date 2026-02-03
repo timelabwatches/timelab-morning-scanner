@@ -12,11 +12,17 @@ import requests
 # CONFIG (TIMELAB)
 # =========================
 
-MIN_NET_EUR = float(os.getenv("MIN_NET_EUR", "20"))
-MIN_NET_ROI = float(os.getenv("MIN_NET_ROI", "0.05"))
-MIN_MATCH_SCORE = int(os.getenv("MIN_MATCH_SCORE", "50"))
-ALLOW_FAKE_RISK = set((os.getenv("ALLOW_FAKE_RISK", "low,medium")).split(","))  # nunca "high"
+# 🔧 MODO CALIBRACIÓN (temporal)
+# Permite ver "casi oportunidades" para ajustar targets y márgenes reales
 
+MIN_NET_EUR = float(os.getenv("MIN_NET_EUR", "-10"))
+MIN_NET_ROI = float(os.getenv("MIN_NET_ROI", "-0.05"))
+MIN_MATCH_SCORE = int(os.getenv("MIN_MATCH_SCORE", "45"))
+
+ALLOW_FAKE_RISK = set(
+    x.strip()
+    for x in os.getenv("ALLOW_FAKE_RISK", "low,medium").split(",")
+)
 # Cost model (puedes ajustar luego para tu entramado real)
 CATWIKI_COMMISSION = float(os.getenv("CATWIKI_COMMISSION", "0.125"))
 PAYMENT_PROCESSING = float(os.getenv("PAYMENT_PROCESSING", "0.0"))
