@@ -8,7 +8,6 @@ from typing import List, Optional, Tuple, Dict
 
 import requests
 
-
 # =========================
 # CONFIG (TIMELAB)
 # =========================
@@ -16,7 +15,10 @@ import requests
 MIN_NET_EUR = float(os.getenv("MIN_NET_EUR", "20"))
 MIN_NET_ROI = float(os.getenv("MIN_NET_ROI", "0.05"))
 MIN_MATCH_SCORE = int(os.getenv("MIN_MATCH_SCORE", "50"))
-ALLOW_FAKE_RISK = set(x.strip().lower() for x in os.getenv("ALLOW_FAKE_RISK", "low,medium").split(","))
+ALLOW_FAKE_RISK = set(
+    x.strip().lower()
+    for x in os.getenv("ALLOW_FAKE_RISK", "low,medium").split(",")
+)
 
 BUY_MAX_MULT = float(os.getenv("BUY_MAX_MULT", "1.25"))  # producción 1.25–1.5 | calibración 10
 
@@ -36,6 +38,10 @@ EBAY_MARKETPLACE_ID = (os.getenv("EBAY_MARKETPLACE_ID") or "EBAY_ES").strip()
 EBAY_LIMIT = int(os.getenv("EBAY_LIMIT", "50"))
 EBAY_THROTTLE_S = float(os.getenv("EBAY_THROTTLE_S", "0.35"))
 
+# Telegram
+TELEGRAM_BOT_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+TELEGRAM_CHAT_ID = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+TELEGRAM_PING = (os.getenv("TELEGRAM_PING", "0").strip() == "1")  # si pones 1, manda ping corto al inicio
 
 # =========================
 # EU HELPERS (IMPORTANT)
@@ -44,6 +50,36 @@ EBAY_THROTTLE_S = float(os.getenv("EBAY_THROTTLE_S", "0.35"))
 EU_ISO2 = {
     "ES","FR","DE","IT","PT","BE","NL","LU","IE","AT","FI","SE","DK","PL","CZ","SK","SI","HR",
     "HU","RO","BG","GR","CY","MT","LV","LT","EE"
+}
+
+EU_WORDS = {
+    "spain","españa","espana",
+    "france","francia",
+    "germany","alemania",
+    "italy","italia",
+    "portugal",
+    "belgium","bélgica","belgica",
+    "netherlands","países bajos","paises bajos",
+    "austria",
+    "ireland","irlanda",
+    "finland","finlandia",
+    "sweden","suecia",
+    "denmark","dinamarca",
+    "poland","polonia",
+    "czech","chequia",
+    "slovakia","eslovaquia",
+    "slovenia",
+    "croatia","croacia",
+    "hungary","hungria",
+    "romania",
+    "bulgaria",
+    "greece","grecia",
+    "luxembourg","luxemburgo",
+    "latvia","letonia",
+    "lithuania","lituania",
+    "estonia",
+    "cyprus","chipre",
+    "malta"
 }
 
 def norm(s: str) -> str:
@@ -58,19 +94,18 @@ def is_eu_location(loc: str) -> bool:
         return True
 
     raw = loc.strip()
-    # intenta sacar ISO2 al final: "Madrid, ES"
+
+    # Caso típico: "Madrid, ES"
     m = re.search(r"\b([A-Z]{2})\b\s*$", raw)
     if m:
         return m.group(1).upper() in EU_ISO2
 
-    l = norm(raw)
-    # fallback muy permisivo: si contiene nombres de países típicos
-    common = ["spain","españa","france","francia","germany","alemania","italy","italia","portugal",
-              "belgium","bélgica","netherlands","países bajos","austria","ireland","finland","sweden",
-              "denmark","poland","czech","slovakia","slovenia","croatia","hungary","romania","bulgaria",
-              "greece","luxembourg","latvia","lithuania","estonia","cyprus","malta"]
-    return any(c in l for c in common)
+    # Caso: solo "ES"
+    if re.fullmatch(r"[A-Z]{2}", raw):
+        return raw.upper() in EU_ISO2
 
+    l = norm(raw)
+    return any(w in l for w in EU_WORDS)
 
 # =========================
 # DATA STRUCTURES
@@ -106,7 +141,6 @@ class Candidate:
     expected_close: float
     net_profit: float
     net_roi: float
-
 
 # =========================
 # MATCH + PROFIT
@@ -159,7 +193,6 @@ def estimate_net_profit(buy: float, ship: float, close: float) -> Tuple[float, f
 def now_utc() -> str:
     return dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-
 # =========================
 # TARGET LIST
 # =========================
@@ -195,7 +228,7 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
 
         buy_max = float(t.get("max_buy_eur", 0.0) or 0.0)
 
-        # Query para eBay: marca + keywords principales (sin duplicar)
+        # Query eBay: 4 primeros tokens (marca + 3 keywords)
         query = " ".join(kws[:4]).strip()
 
         targets.append(TargetModel(
@@ -214,7 +247,6 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
         raise ValueError("target_list.json cargó pero no generó targets válidos")
 
     return targets
-
 
 # =========================
 # EBAY API
@@ -260,7 +292,7 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
         title = it.get("title") or ""
         url = it.get("itemWebUrl") or ""
         price = it.get("price") or {}
-        currency = (price.get("currency") or "").upper()
+
         try:
             price_eur = float(price.get("value"))
         except Exception:
@@ -274,9 +306,6 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
         city = (item_loc.get("city") or "")
         loc = f"{city}, {cc}".strip(", ") if (city or cc) else ""
 
-        # Si viene una moneda rara, seguimos (más adelante podemos convertir)
-        _ = currency
-
         out.append(Listing(
             source="ebay",
             country_site=EBAY_MARKETPLACE_ID,
@@ -289,27 +318,28 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
 
     return out
 
-
 # =========================
-# TELEGRAM
+# TELEGRAM (con split)
 # =========================
 
 def tg_send(msg: str) -> None:
-    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-    chat = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+    # Si faltan, fallamos el job (así lo ves en Actions)
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        raise RuntimeError("Faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (Secrets no inyectados).")
 
-    # IMPORTANTE: si faltan, fallamos el job (así lo ves en Actions)
-    if not token or not chat:
-        raise RuntimeError("Faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en env (Secrets no inyectados).")
+    # Telegram límite ~4096
+    MAX_LEN = 3800
+    chunks = [msg[i:i+MAX_LEN] for i in range(0, len(msg), MAX_LEN)] or ["(empty)"]
 
-    r = requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": chat, "text": msg, "disable_web_page_preview": True},
-        timeout=HTTP_TIMEOUT
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"Telegram error {r.status_code}: {r.text[:500]}")
-
+    for part in chunks:
+        r = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": part, "disable_web_page_preview": True},
+            timeout=HTTP_TIMEOUT
+        )
+        if r.status_code != 200:
+            raise RuntimeError(f"Telegram error {r.status_code}: {r.text[:500]}")
+        time.sleep(0.2)
 
 # =========================
 # MAIN
@@ -317,6 +347,10 @@ def tg_send(msg: str) -> None:
 
 def main():
     now = now_utc()
+
+    # Ping opcional para confirmar que Telegram funciona SIEMPRE
+    if TELEGRAM_PING:
+        tg_send(f"✅ TIMELAB ping OK — {now} (marketplace {EBAY_MARKETPLACE_ID})")
 
     targets = load_targets_from_json("target_list.json")
     token = ebay_oauth_app_token()
@@ -392,6 +426,7 @@ def main():
             "",
             f"Recolectado: eBay={counts['ebay']}",
             f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
+            f"BUY_MAX_MULT: {BUY_MAX_MULT}",
             "",
             "❌ Sin oportunidades que pasen filtros.",
             "",
@@ -416,6 +451,7 @@ def main():
         "",
         f"Recolectado: eBay={counts['ebay']}",
         f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
+        f"BUY_MAX_MULT: {BUY_MAX_MULT}",
         ""
     ]
 
@@ -430,7 +466,6 @@ def main():
         )
 
     tg_send("\n".join(msg))
-
 
 if __name__ == "__main__":
     main()
