@@ -39,6 +39,10 @@ EBAY_THROTTLE_S = float(os.getenv("EBAY_THROTTLE_S", "0.35"))
 # Categoría por defecto (si el target no trae ebay_category_id)
 EBAY_DEFAULT_CATEGORY_ID = (os.getenv("EBAY_DEFAULT_CATEGORY_ID") or "31387").strip()
 
+# 2 fases: cuántos ítems pedir “en detalle”
+DETAIL_FETCH_N = int(os.getenv("DETAIL_FETCH_N", "35"))                 # TOP N a enriquecer con /item/{id}
+EBAY_DETAIL_THROTTLE_S = float(os.getenv("EBAY_DETAIL_THROTTLE_S", "0.20"))  # pausa entre llamadas detalle
+
 
 # =========================
 # NORMALIZATION
@@ -46,7 +50,6 @@ EBAY_DEFAULT_CATEGORY_ID = (os.getenv("EBAY_DEFAULT_CATEGORY_ID") or "31387").st
 
 def norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
-
 
 def norm_tokens(items: List[str]) -> List[str]:
     out = []
@@ -58,7 +61,7 @@ def norm_tokens(items: List[str]) -> List[str]:
 
 
 # =========================
-# EU HELPERS (IMPORTANT)
+# EU HELPERS
 # =========================
 
 EU_ISO2 = {
@@ -67,18 +70,12 @@ EU_ISO2 = {
 }
 
 def is_eu_location(loc: str) -> bool:
-    """
-    eBay Browse API suele dar itemLocation.country como ISO2 (p.ej. 'DE')
-    y lo montamos como 'city, DE'. Reconocemos esos códigos y también texto.
-    """
     if not loc:
         return True
-
     raw = loc.strip()
     m = re.search(r"\b([A-Z]{2})\b\s*$", raw)
     if m:
         return m.group(1).upper() in EU_ISO2
-
     l = norm(raw)
     common = ["spain","españa","france","francia","germany","alemania","italy","italia","portugal",
               "belgium","bélgica","netherlands","países bajos","austria","ireland","finland","sweden",
@@ -88,10 +85,9 @@ def is_eu_location(loc: str) -> bool:
 
 
 # =========================
-# GLOBAL TITLE FILTERS (anti-ruido)
+# GLOBAL TITLE/DETAIL FILTERS
 # =========================
 
-# Palabras típicas de "piezas/accesorios" (evita cajas, coronas, esferas, brazaletes sueltos, etc.)
 GLOBAL_PARTS_TERMS = {
     "crown", "corona",
     "dial", "cadran",
@@ -100,38 +96,74 @@ GLOBAL_PARTS_TERMS = {
     "bracelet", "bracciale", "armband",
     "box", "scatola",
     "papers", "documenti", "paperwork",
-    "movement only", "caliber", "calibre",
-    "parts", "spares", "spare", "repair", "for parts",
+    "movement only", "caliber only", "calibre only",
+    "parts", "spares", "spare",
+    "ricambi", "pezzi", "ricambio",
     "lot of", "bundle"
 }
 
-# Indicadores fuertes de "no funciona / reparación"
-GLOBAL_HARD_BAD_TERMS = {
-    "for parts", "parts", "spares", "repair", "broken", "not working",
-    "defect", "defective", "no funciona", "non funziona", "à réparer", "a riparare",
-    "da riparare", "nicht funktioniert", "doesn't work", "does not work"
+WATCH_LIKELY_TERMS = {
+    "watch", "orologio", "montre", "uhr", "reloj",
+    "automatic", "automatique", "automatik",
+    "chronograph", "cronografo", "chronographe",
+    "cal.", "calibre", "caliber"
 }
 
-# Indicadores de buen estado (bonus)
+# Rechazo FUERTE multi-idioma
+GLOBAL_HARD_BAD_TERMS = {
+    # EN
+    "for parts", "for spares", "parts only", "spares only",
+    "repair", "broken", "not working", "doesn't work", "does not work",
+    "defect", "defective",
+    "as is", "untested", "not tested",
+    # ES
+    "no funciona", "para piezas", "para repuestos", "averiado", "averiada", "sin funcionar",
+    # IT
+    "ricambi", "riparazione", "riparare", "a riparare", "da riparare", "non funziona", "guasto",
+    # FR
+    "pour pieces", "pour pièces", "a reparer", "à réparer", "ne fonctionne pas",
+    # DE
+    "defekt", "nicht funktioniert", "funktioniert nicht", "zum basteln"
+}
+
 GLOBAL_BOOST_TERMS = {
     "nos", "new old stock", "mint", "full set",
     "serviced", "service", "revised", "revisionato", "revisado", "revisión",
-    "working", "runs", "keeps time", "tested", "fonctionne", "funziona"
+    "working", "works", "runs", "tested", "fonctionne", "funziona", "läuft"
 }
 
-# Indicadores de mal estado (penalización)
 GLOBAL_BAD_TERMS = {
     "scratches", "scratch", "heavily used", "worn",
-    "patina heavy", "stains", "rust", "corrosion",
-    "glass cracked", "cracked", "broken glass",
-    "missing", "no crown", "no strap", "without strap"
+    "rust", "corrosion",
+    "cracked", "broken glass", "glass cracked",
+    "missing", "no crown", "without strap", "no strap",
+    # red flags
+    "read the description", "see description", "please read",
+    "as is", "untested", "not tested",
+    "balance ok", "balance wheel ok"
 }
 
-# Para evitar descartar un anuncio legítimo de reloj completo solo porque mencione "bracelet"
-# comprobamos si el título contiene algún indicador claro de "reloj completo"
-WATCH_LIKELY_TERMS = {
-    "watch", "orologio", "montre", "uhr", "reloj", "automatic", "chronograph", "cal.", "calibre", "caliber"
+AUTO_CONTRADICTIONS = {
+    "quartz", "battery", "pile",
+    "manual", "hand-wound", "hand wound", "handwound",
+    "carica manuale", "a carica manuale", "remontage manuel", "handaufzug"
 }
+
+def title_has_any(t: str, terms: Set[str]) -> bool:
+    return any(x in t for x in terms if x)
+
+def text_is_likely_watch(t: str) -> bool:
+    return title_has_any(t, WATCH_LIKELY_TERMS)
+
+def global_noise_reject(text: str) -> Optional[str]:
+    t = norm(text)
+    if not t:
+        return "empty_text"
+    if title_has_any(t, GLOBAL_HARD_BAD_TERMS):
+        return "hard_bad_terms"
+    if title_has_any(t, GLOBAL_PARTS_TERMS) and not text_is_likely_watch(t):
+        return "parts_noise"
+    return None
 
 
 # =========================
@@ -150,7 +182,6 @@ class TargetModel:
     query: str
     ebay_category_id: Optional[str] = None
 
-    # NEW:
     must_include: List[str] = None
     must_exclude: List[str] = None
     condition_boost_terms: List[str] = None
@@ -160,11 +191,15 @@ class TargetModel:
 class Listing:
     source: str
     country_site: str
+    item_id: str
     title: str
     price_eur: float
     shipping_eur: float
     url: str
     location_text: str
+    condition: str = ""
+    condition_id: str = ""
+    short_desc: str = ""
 
 @dataclass
 class Candidate:
@@ -215,7 +250,6 @@ def compute_match_score(title: str, target: TargetModel) -> int:
 
     return max(0, min(100, score))
 
-
 def estimate_net_profit(buy: float, ship: float, close: float) -> Tuple[float, float]:
     cost = buy + ship + PACKAGING_EUR + MISC_EUR
     revenue = close + SHIP_ARBITRAGE_EUR
@@ -226,88 +260,59 @@ def estimate_net_profit(buy: float, ship: float, close: float) -> Tuple[float, f
     roi = net / max(1.0, cost)
     return net, roi
 
-
 def now_utc() -> str:
     return dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
 
 # =========================
-# TITLE FILTERS PER TARGET
+# TARGET FILTERS
 # =========================
 
-def title_has_any(t: str, terms: Set[str]) -> bool:
-    return any(x in t for x in terms if x)
+def title_passes_target_filters(text: str, target: TargetModel) -> bool:
+    t = norm(text)
 
-def title_is_likely_watch(t: str) -> bool:
-    return title_has_any(t, WATCH_LIKELY_TERMS)
-
-def global_noise_reject(title: str) -> Optional[str]:
-    """
-    Rechazos globales para evitar ruido extremo:
-    - Si tiene hard_bad_terms -> fuera
-    - Si parece "pieza suelta" (parts terms) y NO parece reloj completo -> fuera
-    """
-    t = norm(title)
-    if not t:
-        return "empty_title"
-
-    if title_has_any(t, GLOBAL_HARD_BAD_TERMS):
-        return "hard_bad_terms"
-
-    # "parts-like" + no señales de reloj completo
-    if title_has_any(t, GLOBAL_PARTS_TERMS) and not title_is_likely_watch(t):
-        return "parts_noise"
-
-    return None
-
-
-def title_passes_target_filters(title: str, target: TargetModel) -> bool:
-    t = norm(title)
-
-    # must_include: deben estar TODOS
     mi = norm_tokens(target.must_include or [])
-    if mi:
-        if not all(x in t for x in mi):
-            return False
+    if mi and not all(x in t for x in mi):
+        return False
 
-    # must_exclude: si aparece cualquiera -> fuera
     me = norm_tokens(target.must_exclude or [])
-    if me:
-        if any(x in t for x in me):
+    if me and any(x in t for x in me):
+        return False
+
+    # Si exige automatic, y el texto dice quartz/manual -> fuera
+    if any(x in {"automatic", "automatique", "automatik"} for x in mi):
+        if title_has_any(t, AUTO_CONTRADICTIONS):
             return False
 
     return True
 
+def compute_condition_score(text: str, target: TargetModel, condition_str: str = "", condition_id: str = "") -> int:
+    t = norm(text + " " + (condition_str or ""))
 
-def compute_condition_score(title: str, target: TargetModel) -> int:
-    """
-    Score heurístico (estado) basado en keywords del título.
-    No es perfecto, pero reduce basura.
-    """
-    t = norm(title)
+    # condición estructurada: si eBay dice “For parts or not working” o similar -> fuera por hard
+    hard = global_noise_reject(t)
+    if hard is not None:
+        return -999  # marca para rechazo directo
 
-    boost = set(GLOBAL_BOOST_TERMS)
-    bad = set(GLOBAL_BAD_TERMS)
-
-    boost |= set(norm_tokens(target.condition_boost_terms or []))
-    bad |= set(norm_tokens(target.condition_bad_terms or []))
+    boost = set(GLOBAL_BOOST_TERMS) | set(norm_tokens(target.condition_boost_terms or []))
+    bad = set(GLOBAL_BAD_TERMS) | set(norm_tokens(target.condition_bad_terms or []))
 
     score = 0
-
-    # Bonus por “buenas” señales
     if any(x in t for x in boost):
         score += 15
 
-    # Penalización por “malas” señales
     if any(x in t for x in bad):
-        score -= 10
+        score -= 15
 
-    # Penalización fuerte si insinúa reparación (aunque no sea hard_bad)
-    soft_bad = {"repair", "a riparare", "da riparare", "à réparer"}
-    if any(x in t for x in soft_bad):
-        score -= 25
+    # penaliza reparación aunque no sea hard
+    soft_repair = {"repair", "riparazione", "riparare", "a riparare", "da riparare", "à réparer", "a reparer"}
+    if any(x in t for x in soft_repair):
+        score -= 35
 
-    # Clamp
+    uncertainty = {"untested", "not tested", "as is", "read the description", "see description", "balance ok"}
+    if any(x in t for x in uncertainty):
+        score -= 20
+
     return max(-50, min(25, score))
 
 
@@ -346,7 +351,6 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
 
         buy_max = float(t.get("max_buy_eur", 0.0) or 0.0)
 
-        # Query: usa el campo query si existe; si no, construye
         query = (t.get("query") or "").strip()
         if not query:
             query = " ".join(kws[:4]).strip()
@@ -362,7 +366,6 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
             query=query,
             ebay_category_id=(t.get("ebay_category_id") or None),
 
-            # NEW:
             must_include=t.get("must_include", []) or [],
             must_exclude=t.get("must_exclude", []) or [],
             condition_boost_terms=t.get("condition_boost_terms", []) or [],
@@ -385,16 +388,12 @@ def ebay_oauth_app_token() -> str:
 
     url = "https://api.ebay.com/identity/v1/oauth2/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    data = {
-        "grant_type": "client_credentials",
-        "scope": "https://api.ebay.com/oauth/api_scope"
-    }
+    data = {"grant_type": "client_credentials", "scope": "https://api.ebay.com/oauth/api_scope"}
 
     r = requests.post(url, headers=headers, data=data, auth=(EBAY_CLIENT_ID, EBAY_CLIENT_SECRET), timeout=HTTP_TIMEOUT)
     if r.status_code != 200:
         raise RuntimeError(f"OAuth error {r.status_code}: {r.text[:500]}")
     return r.json()["access_token"]
-
 
 def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit: int = 50) -> List[Listing]:
     base = "https://api.ebay.com/buy/browse/v1/item_summary/search"
@@ -404,9 +403,7 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
         "Accept": "application/json"
     }
 
-    # si category_id vacío, usa default
     cat = (category_id or "").strip() or EBAY_DEFAULT_CATEGORY_ID
-
     params: Dict[str, str] = {
         "q": query,
         "limit": str(min(max(limit, 1), 200)),
@@ -424,30 +421,99 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
     for it in items:
         title = it.get("title") or ""
         url = it.get("itemWebUrl") or ""
+        item_id = it.get("itemId") or ""
+        if not item_id:
+            continue
+
         price = it.get("price") or {}
         try:
             price_eur = float(price.get("value"))
         except Exception:
             continue
 
-        ship_eur = 0.0  # eBay search muchas veces no lo trae aquí
-
+        ship_eur = 0.0  # se enriquecerá en fase 2 si existe
         item_loc = it.get("itemLocation") or {}
         cc = (item_loc.get("country") or "").upper()
         city = (item_loc.get("city") or "")
         loc = f"{city}, {cc}".strip(", ") if (city or cc) else (cc or "")
 
+        cond = it.get("condition") or ""
+        cond_id = str(it.get("conditionId") or "")
+
         out.append(Listing(
             source="ebay",
             country_site=EBAY_MARKETPLACE_ID,
+            item_id=item_id,
             title=title,
             price_eur=price_eur,
             shipping_eur=ship_eur,
             url=url,
-            location_text=loc
+            location_text=loc,
+            condition=cond,
+            condition_id=cond_id,
+            short_desc=""
         ))
 
     return out
+
+def ebay_get_item_detail(token: str, item_id: str) -> Dict:
+    url = f"https://api.ebay.com/buy/browse/v1/item/{item_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-EBAY-C-MARKETPLACE-ID": EBAY_MARKETPLACE_ID,
+        "Accept": "application/json"
+    }
+    r = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+    if r.status_code != 200:
+        # no tiramos todo el job por un detalle fallido: devolvemos vacío
+        return {}
+    return r.json()
+
+def eur_value(money: Dict) -> Optional[float]:
+    if not isinstance(money, dict):
+        return None
+    v = money.get("value")
+    cur = (money.get("currency") or "").upper()
+    try:
+        fv = float(v)
+    except Exception:
+        return None
+    # aquí asumimos EUR. Si un día quieres conversión, lo hacemos, pero de momento lo ignoramos.
+    if cur and cur != "EUR":
+        return None
+    return fv
+
+def enrich_listing_from_detail(li: Listing, detail: Dict) -> Listing:
+    if not detail:
+        return li
+
+    li.condition = detail.get("condition") or li.condition or ""
+    li.condition_id = str(detail.get("conditionId") or li.condition_id or "")
+
+    sd = detail.get("shortDescription")
+    if isinstance(sd, str) and sd.strip():
+        li.short_desc = sd.strip()
+
+    # shipping (si hay)
+    ship_opts = detail.get("shippingOptions") or []
+    if isinstance(ship_opts, list) and ship_opts:
+        # buscamos el primer shippingCost que venga en EUR
+        for opt in ship_opts:
+            sc = opt.get("shippingCost") or {}
+            val = eur_value(sc)
+            if val is not None:
+                li.shipping_eur = float(val)
+                break
+
+    # itemLocation suele venir aquí también
+    loc = detail.get("itemLocation") or {}
+    cc = (loc.get("country") or "").upper()
+    city = (loc.get("city") or "")
+    new_loc = f"{city}, {cc}".strip(", ") if (city or cc) else (cc or "")
+    if new_loc:
+        li.location_text = new_loc
+
+    return li
 
 
 # =========================
@@ -457,9 +523,8 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
 def tg_send(msg: str) -> None:
     token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
     chat = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
-
     if not token or not chat:
-        raise RuntimeError("Faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en env (Secrets no inyectados).")
+        raise RuntimeError("Faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en env.")
 
     r = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
@@ -483,21 +548,24 @@ def main():
     listings: List[Listing] = []
     counts = {"ebay": 0}
 
+    # --------
+    # FASE 1: SEARCH
+    # --------
     for t in targets:
         got = ebay_search(token, query=t.query, category_id=t.ebay_category_id, limit=EBAY_LIMIT)
         listings.extend(got)
         counts["ebay"] += len(got)
         time.sleep(EBAY_THROTTLE_S)
 
-    # Dedup por URL (muy importante para evitar spam repetido)
+    # Dedup por item_id
     seen = set()
     unique: List[Listing] = []
     for li in listings:
-        if not li.url:
+        if not li.item_id:
             continue
-        if li.url in seen:
+        if li.item_id in seen:
             continue
-        seen.add(li.url)
+        seen.add(li.item_id)
         unique.append(li)
     listings = unique
 
@@ -505,27 +573,21 @@ def main():
         tg_send(
             f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})\n{now}\n\n"
             f"⚠️ 0 listings recogidos desde eBay API.\n"
-            f"Revisa: marketplace={EBAY_MARKETPLACE_ID} | queries | token.\n"
         )
         return
 
-    candidates: List[Candidate] = []
-    raw_scored: List[Tuple[int, int, Listing, TargetModel, float, float]] = []
-
+    # --------
+    # Pre-score para decidir cuáles enriquecer
+    # --------
+    prescored: List[Tuple[int, float, Listing, TargetModel]] = []
     for li in listings:
-        # EU filter
         if not is_eu_location(li.location_text):
             continue
-
-        # Global anti-ruido
-        reason = global_noise_reject(li.title)
-        if reason is not None:
+        if global_noise_reject(li.title) is not None:
             continue
 
-        # Busca el mejor target por match, PERO exige pasar sus filtros must_include/must_exclude
         best_ms = -1
-        best_t: Optional[TargetModel] = None
-
+        best_t = None
         for t in targets:
             if not title_passes_target_filters(li.title, t):
                 continue
@@ -533,43 +595,100 @@ def main():
             if ms > best_ms:
                 best_ms = ms
                 best_t = t
+        if not best_t:
+            continue
+
+        # expected close preliminar (sin estado)
+        expected_close = best_t.catwiki_close_med if best_t.catwiki_close_med > 0 else max(li.price_eur * 1.8, li.price_eur + 150)
+        net, _ = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
+
+        prescored.append((best_ms, net, li, best_t))
+
+    prescored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    to_enrich = prescored[:max(0, DETAIL_FETCH_N)]
+    enrich_ids = {li.item_id for _, _, li, _ in to_enrich}
+
+    # --------
+    # FASE 2: DETAIL ENRICHMENT (solo TOP N)
+    # --------
+    enriched_count = 0
+    enriched_map: Dict[str, Listing] = {}
+    for _, _, li, _ in to_enrich:
+        detail = ebay_get_item_detail(token, li.item_id)
+        new_li = enrich_listing_from_detail(li, detail)
+        enriched_map[new_li.item_id] = new_li
+        enriched_count += 1
+        time.sleep(EBAY_DETAIL_THROTTLE_S)
+
+    # Reemplaza los listings a enriquecer por su versión enriquecida
+    final_listings: List[Listing] = []
+    for li in listings:
+        if li.item_id in enrich_ids and li.item_id in enriched_map:
+            final_listings.append(enriched_map[li.item_id])
+        else:
+            final_listings.append(li)
+    listings = final_listings
+
+    # --------
+    # Selección final con estado real (condition + shortDescription + shipping)
+    # --------
+    candidates: List[Candidate] = []
+    raw_scored: List[Tuple[int, int, Listing, TargetModel, float, float]] = []
+
+    for li in listings:
+        if not is_eu_location(li.location_text):
+            continue
+
+        # texto ampliado para filtros de calidad
+        detail_text = li.title
+        if li.short_desc:
+            detail_text += " " + li.short_desc
+        if li.condition:
+            detail_text += " " + li.condition
+
+        if global_noise_reject(detail_text) is not None:
+            continue
+
+        best_ms = -1
+        best_t: Optional[TargetModel] = None
+
+        for t in targets:
+            # filtros de target usando texto ampliado
+            if not title_passes_target_filters(detail_text, t):
+                continue
+            ms = compute_match_score(li.title, t)  # match se basa en título (más estable)
+            if ms > best_ms:
+                best_ms = ms
+                best_t = t
 
         if not best_t:
             continue
 
-        # Condition score (estado inferido)
-        cscore = compute_condition_score(li.title, best_t)
-
-        # Expected close: mediana del target, si no, heurística
-        expected_close = best_t.catwiki_close_med if best_t.catwiki_close_med > 0 else max(li.price_eur * 1.8, li.price_eur + 150)
-
-        # Ajuste leve por condition_score (no exagerar):
-        # +0%..+5% si muy bueno, -0%..-10% si malo
-        if cscore >= 15:
-            expected_close *= 1.05
-        elif cscore <= -25:
-            expected_close *= 0.90
-        elif cscore <= -10:
-            expected_close *= 0.95
-
-        net, roi = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
-
-        raw_scored.append((best_ms, cscore, li, best_t, net, roi))
-
-        # buy_max controlable
-        if best_t.buy_max > 0 and li.price_eur > (best_t.buy_max * BUY_MAX_MULT):
+        cscore = compute_condition_score(detail_text, best_t, condition_str=li.condition, condition_id=li.condition_id)
+        if cscore == -999:
             continue
 
-        # filtros principales
+        expected_close = best_t.catwiki_close_med if best_t.catwiki_close_med > 0 else max(li.price_eur * 1.8, li.price_eur + 150)
+
+        # Ajuste moderado por estado
+        if cscore >= 15:
+            expected_close *= 1.05
+        elif cscore <= -35:
+            expected_close *= 0.85
+        elif cscore <= -20:
+            expected_close *= 0.92
+
+        net, roi = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
+        raw_scored.append((best_ms, cscore, li, best_t, net, roi))
+
+        if best_t.buy_max > 0 and li.price_eur > (best_t.buy_max * BUY_MAX_MULT):
+            continue
         if best_ms < MIN_MATCH_SCORE:
             continue
         if best_t.fake_risk not in ALLOW_FAKE_RISK:
             continue
-
-        # filtro “estado” mínimo: si el título sugiere muy malo, fuera (salvo que estés en calibración)
-        if cscore <= -30:
+        if cscore <= -35:
             continue
-
         if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
             continue
 
@@ -583,7 +702,6 @@ def main():
             net_roi=roi
         ))
 
-    # Orden: primero net_profit, luego match, luego condition_score
     candidates.sort(key=lambda c: (c.net_profit, c.match_score, c.condition_score), reverse=True)
     top = candidates[:10]
 
@@ -595,6 +713,7 @@ def main():
         f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
         f"BUY_MAX_MULT: {BUY_MAX_MULT}",
         f"EBAY_DEFAULT_CATEGORY_ID: {EBAY_DEFAULT_CATEGORY_ID}",
+        f"DETAIL_FETCH_N: {DETAIL_FETCH_N} | details_fetched: {enriched_count}",
         ""
     ]
 
@@ -605,15 +724,15 @@ def main():
         lines = header + [
             "❌ Sin oportunidades que pasen filtros.",
             "",
-            "🧪 SMOKE TEST (Top RAW por match/net/condition aunque no cumplan):",
+            "🧪 SMOKE TEST (Top RAW por match/net/cond):",
             ""
         ]
 
         for i, (ms, cs, li, t, net, roi) in enumerate(raw_top, 1):
             lines.append(
                 f"{i}) [ebay] {li.title}\n"
-                f"   💶 {li.price_eur:.0f}€ | Neto est. {net:.0f}€ | ROI {int(roi*100)}% | Match {ms} | Cond {cs}\n"
-                f"   🎯 Target: {t.key}\n"
+                f"   💶 {li.price_eur:.0f}€ | 🚚 {li.shipping_eur:.0f}€ | Neto {net:.0f}€ | ROI {int(roi*100)}% | Match {ms} | Cond {cs}\n"
+                f"   🧩 Target: {t.key}\n"
                 f"   📍 {li.location_text}\n"
                 f"   🔗 {li.url}\n"
             )
@@ -622,15 +741,15 @@ def main():
         return
 
     msg = header
-
     for i, c in enumerate(top, 1):
         li = c.listing
         msg.append(
             f"{i}) [ebay] {li.title}\n"
-            f"   💶 Compra: {li.price_eur:.0f}€ | 🎯 Cierre est.: {c.expected_close:.0f}€\n"
+            f"   💶 Compra: {li.price_eur:.0f}€ | 🚚 Envío: {li.shipping_eur:.0f}€ | 🎯 Cierre est.: {c.expected_close:.0f}€\n"
             f"   ✅ Neto est.: {c.net_profit:.0f}€ | ROI: {int(c.net_roi*100)}% | Match: {c.match_score} | Cond: {c.condition_score}\n"
             f"   🧩 Target: {c.target.key}\n"
             f"   📍 {li.location_text}\n"
+            f"   🧾 eBay cond: {li.condition or 'n/a'}\n"
             f"   🔗 {li.url}\n"
         )
 
