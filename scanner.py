@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple, Dict
 
 import requests
 
+
 # =========================
 # CONFIG (TIMELAB)
 # =========================
@@ -15,10 +16,7 @@ import requests
 MIN_NET_EUR = float(os.getenv("MIN_NET_EUR", "20"))
 MIN_NET_ROI = float(os.getenv("MIN_NET_ROI", "0.05"))
 MIN_MATCH_SCORE = int(os.getenv("MIN_MATCH_SCORE", "50"))
-ALLOW_FAKE_RISK = set(
-    x.strip().lower()
-    for x in os.getenv("ALLOW_FAKE_RISK", "low,medium").split(",")
-)
+ALLOW_FAKE_RISK = set(x.strip().lower() for x in os.getenv("ALLOW_FAKE_RISK", "low,medium").split(","))
 
 BUY_MAX_MULT = float(os.getenv("BUY_MAX_MULT", "1.25"))  # producción 1.25–1.5 | calibración 10
 
@@ -38,10 +36,28 @@ EBAY_MARKETPLACE_ID = (os.getenv("EBAY_MARKETPLACE_ID") or "EBAY_ES").strip()
 EBAY_LIMIT = int(os.getenv("EBAY_LIMIT", "50"))
 EBAY_THROTTLE_S = float(os.getenv("EBAY_THROTTLE_S", "0.35"))
 
-# Telegram
-TELEGRAM_BOT_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-TELEGRAM_CHAT_ID = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
-TELEGRAM_PING = (os.getenv("TELEGRAM_PING", "0").strip() == "1")  # si pones 1, manda ping corto al inicio
+# ✅ IMPORTANT: filtra por categoría "Wristwatches" por defecto (reduce ruido brutalmente)
+EBAY_DEFAULT_CATEGORY_ID = (os.getenv("EBAY_DEFAULT_CATEGORY_ID") or "31387").strip()
+
+# ✅ Filtro anti-piezas/ruido (coronas, esferas, cajas, etc.)
+DEFAULT_EXCLUDE_TERMS = [
+    # piezas / repuestos
+    "crown", "corona", "dial", "hands", "movement", "caliber", "calibre", "case", "bezel",
+    "bracelet", "strap", "buckle", "clasp", "link", "spring bar", "pushers", "pusher",
+    "glass", "crystal", "gasket", "seal", "insert", "pin", "stem",
+    "parts", "spares", "repair", "for parts", "broken", "defekt", "defective",
+    "ricambi", "pezzi", "repuesto", "recambio", "pièce", "pièces", "ersatz", "reparación",
+    # cajas / papeles sueltos
+    "box", "caja", "boite", "scatola", "papers", "papeles", "manual", "instruction", "garantia", "warranty",
+    # relojes que NO son de pulsera
+    "alarm clock", "réveil", "reveil", "desk clock", "table clock", "mantel clock", "pendule", "orologio da tavolo",
+    # correas sueltas / accesorios
+    "watch strap", "leather strap", "rubber strap", "nato strap",
+]
+
+EXCLUDE_TERMS = [t.strip().lower() for t in os.getenv("EXCLUDE_TERMS", ",".join(DEFAULT_EXCLUDE_TERMS)).split(",") if t.strip()]
+SEND_PING = (os.getenv("SEND_PING", "1").strip() == "1")
+
 
 # =========================
 # EU HELPERS (IMPORTANT)
@@ -50,36 +66,6 @@ TELEGRAM_PING = (os.getenv("TELEGRAM_PING", "0").strip() == "1")  # si pones 1, 
 EU_ISO2 = {
     "ES","FR","DE","IT","PT","BE","NL","LU","IE","AT","FI","SE","DK","PL","CZ","SK","SI","HR",
     "HU","RO","BG","GR","CY","MT","LV","LT","EE"
-}
-
-EU_WORDS = {
-    "spain","españa","espana",
-    "france","francia",
-    "germany","alemania",
-    "italy","italia",
-    "portugal",
-    "belgium","bélgica","belgica",
-    "netherlands","países bajos","paises bajos",
-    "austria",
-    "ireland","irlanda",
-    "finland","finlandia",
-    "sweden","suecia",
-    "denmark","dinamarca",
-    "poland","polonia",
-    "czech","chequia",
-    "slovakia","eslovaquia",
-    "slovenia",
-    "croatia","croacia",
-    "hungary","hungria",
-    "romania",
-    "bulgaria",
-    "greece","grecia",
-    "luxembourg","luxemburgo",
-    "latvia","letonia",
-    "lithuania","lituania",
-    "estonia",
-    "cyprus","chipre",
-    "malta"
 }
 
 def norm(s: str) -> str:
@@ -94,18 +80,23 @@ def is_eu_location(loc: str) -> bool:
         return True
 
     raw = loc.strip()
-
-    # Caso típico: "Madrid, ES"
     m = re.search(r"\b([A-Z]{2})\b\s*$", raw)
     if m:
         return m.group(1).upper() in EU_ISO2
 
-    # Caso: solo "ES"
-    if re.fullmatch(r"[A-Z]{2}", raw):
-        return raw.upper() in EU_ISO2
-
     l = norm(raw)
-    return any(w in l for w in EU_WORDS)
+    common = ["spain","españa","france","francia","germany","alemania","italy","italia","portugal",
+              "belgium","bélgica","netherlands","países bajos","austria","ireland","finland","sweden",
+              "denmark","poland","czech","slovakia","slovenia","croatia","hungary","romania","bulgaria",
+              "greece","luxembourg","latvia","lithuania","estonia","cyprus","malta"]
+    return any(c in l for c in common)
+
+def is_noise_title(title: str) -> bool:
+    t = norm(title)
+    if not t:
+        return True
+    return any(x in t for x in EXCLUDE_TERMS)
+
 
 # =========================
 # DATA STRUCTURES
@@ -141,6 +132,7 @@ class Candidate:
     expected_close: float
     net_profit: float
     net_roi: float
+
 
 # =========================
 # MATCH + PROFIT
@@ -178,6 +170,10 @@ def compute_match_score(title: str, target: TargetModel) -> int:
     if any(w in t for w in suspicious):
         score -= 70
 
+    # penaliza ruido aunque se nos cuele por EXCLUDE_TERMS
+    if is_noise_title(t):
+        score -= 40
+
     return max(0, min(100, score))
 
 def estimate_net_profit(buy: float, ship: float, close: float) -> Tuple[float, float]:
@@ -192,6 +188,7 @@ def estimate_net_profit(buy: float, ship: float, close: float) -> Tuple[float, f
 
 def now_utc() -> str:
     return dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
 
 # =========================
 # TARGET LIST
@@ -228,7 +225,7 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
 
         buy_max = float(t.get("max_buy_eur", 0.0) or 0.0)
 
-        # Query eBay: 4 primeros tokens (marca + 3 keywords)
+        # Query para eBay: marca + keywords principales (sin duplicar)
         query = " ".join(kws[:4]).strip()
 
         targets.append(TargetModel(
@@ -247,6 +244,7 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
         raise ValueError("target_list.json cargó pero no generó targets válidos")
 
     return targets
+
 
 # =========================
 # EBAY API
@@ -277,8 +275,11 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
     }
 
     params: Dict[str, str] = {"q": query, "limit": str(min(max(limit, 1), 200))}
-    if category_id:
-        params["category_ids"] = category_id
+
+    # ✅ si el target no trae categoría, usa wristwatches por defecto
+    cid = (category_id or EBAY_DEFAULT_CATEGORY_ID or "").strip()
+    if cid:
+        params["category_ids"] = cid
 
     r = requests.get(base, headers=headers, params=params, timeout=HTTP_TIMEOUT)
     if r.status_code != 200:
@@ -290,9 +291,12 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
 
     for it in items:
         title = it.get("title") or ""
+        if is_noise_title(title):
+            continue
+
         url = it.get("itemWebUrl") or ""
         price = it.get("price") or {}
-
+        currency = (price.get("currency") or "").upper()
         try:
             price_eur = float(price.get("value"))
         except Exception:
@@ -306,6 +310,8 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
         city = (item_loc.get("city") or "")
         loc = f"{city}, {cc}".strip(", ") if (city or cc) else ""
 
+        _ = currency  # placeholder si luego quieres conversión multi-divisa
+
         out.append(Listing(
             source="ebay",
             country_site=EBAY_MARKETPLACE_ID,
@@ -318,28 +324,26 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
 
     return out
 
+
 # =========================
-# TELEGRAM (con split)
+# TELEGRAM
 # =========================
 
 def tg_send(msg: str) -> None:
-    # Si faltan, fallamos el job (así lo ves en Actions)
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        raise RuntimeError("Faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (Secrets no inyectados).")
+    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
 
-    # Telegram límite ~4096
-    MAX_LEN = 3800
-    chunks = [msg[i:i+MAX_LEN] for i in range(0, len(msg), MAX_LEN)] or ["(empty)"]
+    if not token or not chat:
+        raise RuntimeError("Faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en env (Secrets no inyectados).")
 
-    for part in chunks:
-        r = requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": part, "disable_web_page_preview": True},
-            timeout=HTTP_TIMEOUT
-        )
-        if r.status_code != 200:
-            raise RuntimeError(f"Telegram error {r.status_code}: {r.text[:500]}")
-        time.sleep(0.2)
+    r = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat, "text": msg, "disable_web_page_preview": True},
+        timeout=HTTP_TIMEOUT
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Telegram error {r.status_code}: {r.text[:500]}")
+
 
 # =========================
 # MAIN
@@ -348,124 +352,136 @@ def tg_send(msg: str) -> None:
 def main():
     now = now_utc()
 
-    # Ping opcional para confirmar que Telegram funciona SIEMPRE
-    if TELEGRAM_PING:
-        tg_send(f"✅ TIMELAB ping OK — {now} (marketplace {EBAY_MARKETPLACE_ID})")
+    try:
+        targets = load_targets_from_json("target_list.json")
+        token = ebay_oauth_app_token()
 
-    targets = load_targets_from_json("target_list.json")
-    token = ebay_oauth_app_token()
+        if SEND_PING:
+            tg_send(f"✅ TIMELAB ping OK — {now} (marketplace {EBAY_MARKETPLACE_ID})")
 
-    listings: List[Listing] = []
-    counts = {"ebay": 0}
+        listings: List[Listing] = []
+        counts = {"ebay": 0}
 
-    for t in targets:
-        got = ebay_search(token, query=t.query, category_id=t.ebay_category_id, limit=EBAY_LIMIT)
-        listings.extend(got)
-        counts["ebay"] += len(got)
-        time.sleep(EBAY_THROTTLE_S)
-
-    if not listings:
-        tg_send(
-            f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})\n{now}\n\n"
-            f"⚠️ 0 listings recogidos desde eBay API.\n"
-            f"Revisa: marketplace={EBAY_MARKETPLACE_ID} | queries | token.\n"
-        )
-        return
-
-    candidates: List[Candidate] = []
-    raw_scored: List[Tuple[int, Listing, TargetModel, float, float]] = []
-
-    for li in listings:
-        if not is_eu_location(li.location_text):
-            continue
-
-        best_ms = -1
-        best_t: Optional[TargetModel] = None
         for t in targets:
-            ms = compute_match_score(li.title, t)
-            if ms > best_ms:
-                best_ms = ms
-                best_t = t
+            got = ebay_search(token, query=t.query, category_id=t.ebay_category_id, limit=EBAY_LIMIT)
+            listings.extend(got)
+            counts["ebay"] += len(got)
+            time.sleep(EBAY_THROTTLE_S)
 
-        if not best_t:
-            continue
+        if not listings:
+            tg_send(
+                f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})\n{now}\n\n"
+                f"⚠️ 0 listings recogidos desde eBay API.\n"
+                f"Revisa: marketplace={EBAY_MARKETPLACE_ID} | queries | token | category={EBAY_DEFAULT_CATEGORY_ID}\n"
+            )
+            return
 
-        expected_close = best_t.catwiki_close_med if best_t.catwiki_close_med > 0 else max(li.price_eur * 1.8, li.price_eur + 150)
-        net, roi = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
-        raw_scored.append((best_ms, li, best_t, net, roi))
+        candidates: List[Candidate] = []
+        raw_scored: List[Tuple[int, Listing, TargetModel, float, float]] = []
 
-        # buy_max controlable
-        if best_t.buy_max > 0 and li.price_eur > (best_t.buy_max * BUY_MAX_MULT):
-            continue
+        for li in listings:
+            if not is_eu_location(li.location_text):
+                continue
 
-        if best_ms < MIN_MATCH_SCORE:
-            continue
-        if best_t.fake_risk not in ALLOW_FAKE_RISK:
-            continue
-        if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
-            continue
+            best_ms = -1
+            best_t: Optional[TargetModel] = None
+            for t in targets:
+                ms = compute_match_score(li.title, t)
+                if ms > best_ms:
+                    best_ms = ms
+                    best_t = t
 
-        candidates.append(Candidate(
-            listing=li,
-            target=best_t,
-            match_score=best_ms,
-            expected_close=expected_close,
-            net_profit=net,
-            net_roi=roi
-        ))
+            if not best_t:
+                continue
 
-    candidates.sort(key=lambda c: (c.net_profit, c.match_score), reverse=True)
-    top = candidates[:10]
+            expected_close = best_t.catwiki_close_med if best_t.catwiki_close_med > 0 else max(li.price_eur * 1.8, li.price_eur + 150)
+            net, roi = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
+            raw_scored.append((best_ms, li, best_t, net, roi))
 
-    if not top:
-        raw_scored.sort(key=lambda x: (x[0], x[3]), reverse=True)
-        raw_top = raw_scored[:5]
+            if best_t.buy_max > 0 and li.price_eur > (best_t.buy_max * BUY_MAX_MULT):
+                continue
 
-        lines = [
-            f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})\n{now}",
+            if best_ms < MIN_MATCH_SCORE:
+                continue
+            if best_t.fake_risk not in ALLOW_FAKE_RISK:
+                continue
+            if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
+                continue
+
+            candidates.append(Candidate(
+                listing=li,
+                target=best_t,
+                match_score=best_ms,
+                expected_close=expected_close,
+                net_profit=net,
+                net_roi=roi
+            ))
+
+        candidates.sort(key=lambda c: (c.net_profit, c.match_score), reverse=True)
+        top = candidates[:10]
+
+        if not top:
+            raw_scored.sort(key=lambda x: (x[0], x[3]), reverse=True)
+            raw_top = raw_scored[:5]
+
+            lines = [
+                f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})\n{now}",
+                "",
+                f"Recolectado: eBay={counts['ebay']}",
+                f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
+                f"BUY_MAX_MULT: {BUY_MAX_MULT}",
+                f"EBAY_DEFAULT_CATEGORY_ID: {EBAY_DEFAULT_CATEGORY_ID}",
+                "",
+                "❌ Sin oportunidades que pasen filtros.",
+                "",
+                "🧪 SMOKE TEST (Top RAW por match, aunque no cumplan margen):",
+                ""
+            ]
+
+            for i, (ms, li, _, net, roi) in enumerate(raw_top, 1):
+                lines.append(
+                    f"{i}) [ebay] {li.title}\n"
+                    f"   💶 Compra: {li.price_eur:.0f}€ | ✅ Neto est.: {net:.0f}€ | ROI: {int(roi*100)}% | Match: {ms}\n"
+                    f"   📍 {li.location_text}\n"
+                    f"   🔗 {li.url}\n"
+                )
+
+            tg_send("\n".join(lines))
+            return
+
+        msg = [
+            f"🕗 TIMELAB Morning Scan — TOP {len(top)} (eBay API {EBAY_MARKETPLACE_ID})",
+            f"{now}",
             "",
             f"Recolectado: eBay={counts['ebay']}",
             f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
             f"BUY_MAX_MULT: {BUY_MAX_MULT}",
-            "",
-            "❌ Sin oportunidades que pasen filtros.",
-            "",
-            "🧪 SMOKE TEST (Top RAW por match, aunque no cumplan margen):",
+            f"EBAY_DEFAULT_CATEGORY_ID: {EBAY_DEFAULT_CATEGORY_ID}",
             ""
         ]
 
-        for i, (ms, li, _, net, roi) in enumerate(raw_top, 1):
-            lines.append(
+        for i, c in enumerate(top, 1):
+            li = c.listing
+            msg.append(
                 f"{i}) [ebay] {li.title}\n"
-                f"   💶 {li.price_eur:.0f}€ | Neto est. {net:.0f}€ | ROI {int(roi*100)}% | Match {ms}\n"
+                f"   💶 Compra: {li.price_eur:.0f}€ | 🎯 Cierre est.: {c.expected_close:.0f}€\n"
+                f"   ✅ Neto est.: {c.net_profit:.0f}€ | ROI: {int(c.net_roi*100)}% | Match: {c.match_score}\n"
                 f"   📍 {li.location_text}\n"
                 f"   🔗 {li.url}\n"
             )
 
-        tg_send("\n".join(lines))
-        return
+        tg_send("\n".join(msg))
 
-    msg = [
-        f"🕗 TIMELAB Morning Scan — TOP {len(top)} (eBay API {EBAY_MARKETPLACE_ID})",
-        f"{now}",
-        "",
-        f"Recolectado: eBay={counts['ebay']}",
-        f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
-        f"BUY_MAX_MULT: {BUY_MAX_MULT}",
-        ""
-    ]
+    except Exception as e:
+        # ✅ Error -> siempre Telegram
+        err = str(e)[:1200]
+        try:
+            tg_send(f"🕗 TIMELAB Morning Scan\n{now}\n\n❌ ERROR:\n{err}")
+        except Exception:
+            # si Telegram no está, al menos explota para verlo en Actions
+            pass
+        raise
 
-    for i, c in enumerate(top, 1):
-        li = c.listing
-        msg.append(
-            f"{i}) [ebay] {li.title}\n"
-            f"   💶 Compra: {li.price_eur:.0f}€ | 🎯 Cierre est.: {c.expected_close:.0f}€\n"
-            f"   ✅ Neto est.: {c.net_profit:.0f}€ | ROI: {int(c.net_roi*100)}% | Match: {c.match_score}\n"
-            f"   📍 {li.location_text}\n"
-            f"   🔗 {li.url}\n"
-        )
-
-    tg_send("\n".join(msg))
 
 if __name__ == "__main__":
     main()
