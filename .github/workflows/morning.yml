@@ -6,30 +6,6 @@ on:
     - cron: "30 7 * * *"
 
 jobs:
-  run-ebay-scanner:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml
-
-      - name: Run eBay scanner
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python scanner.py || true
-
   run-cashconverters-scanner:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -51,8 +27,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CC_MAX_ITEMS: "20"
-          CC_TIMEOUT: "20"
-          CC_THROTTLE_S: "1.2"
+          CC_MAX_ITEMS: "10"
+          CC_TIMEOUT: "15"
+          CC_THROTTLE_S: "0.8"
         run: |
-          python cashconverters_scanner.py || true
+          python cashconverters_scanner.py
