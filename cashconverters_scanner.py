@@ -16,10 +16,10 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 CC_TIMEOUT = float(os.getenv("CC_TIMEOUT", "20"))
 CC_THROTTLE_S = float(os.getenv("CC_THROTTLE_S", "0.8"))
 
-# Límite duro de fichas a visitar (puedes subir a 400/600 sin problema con throttle)
+# Límite duro de fichas a visitar
 CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "400"))
 
-# Objetivo de “marcas reputadas encontradas” (cuando llegamos, paramos antes)
+# Objetivo de “marcas reputadas encontradas” (si se alcanza antes, se para)
 CC_GOOD_BRANDS_TARGET = int(os.getenv("CC_GOOD_BRANDS_TARGET", "60"))
 
 MIN_MATCH_SCORE = int(os.getenv("CC_MIN_MATCH_SCORE", "65"))
@@ -44,6 +44,7 @@ HEADERS = {
     "Connection": "keep-alive",
 }
 
+# Seeds (pulsera y premium/alta gama)
 SEED_URLS = [
     f"{BASE}/es/es/comprar/relojes/reloj-pulsera/reloj-pulsera-caballero/",
     f"{BASE}/es/es/comprar/relojes/reloj-pulsera/reloj-pulsera-senora/",
@@ -56,6 +57,7 @@ SEED_URLS = [
     f"{BASE}/es/es/comprar/relojes/reloj-alta-gama/reloj-alta-gama-unisex/",
 ]
 
+# Whitelist (marcas “Catawiki-friendly”)
 REPUTABLE_BRANDS = {
     "rolex", "tudor", "omega", "longines", "tag heuer", "breitling",
     "zenith", "jaeger lecoultre", "iwc", "panerai", "cartier",
@@ -70,6 +72,7 @@ REPUTABLE_BRANDS = {
     "raymond weil", "alpina", "laco", "stowa",
 }
 
+# Blacklist (moda / smart / low-value para Catawiki)
 BANNED_BRANDS = {
     "lotus", "festina", "diesel", "armani", "emporio armani", "michael kors",
     "guess", "dkny", "fossil", "police", "hugo boss", "boss", "swatch",
@@ -77,6 +80,7 @@ BANNED_BRANDS = {
     "welder", "ice watch", "icewatch", "tommy hilfiger", "calvin klein",
 }
 
+# Keywords negativos fuertes
 BANNED_KEYWORDS = {
     "smartwatch", "reloj inteligente", "galaxy watch", "apple watch", "fitbit",
     "pulsera actividad", "activity", "fitness",
@@ -84,6 +88,7 @@ BANNED_KEYWORDS = {
     "incompleto", "averiado", "defectuoso", "rotura", "no arranca",
 }
 
+# Keywords positivos suaves (solo ajustan “cond”)
 POSITIVE_KEYWORDS = {"revisado", "funciona", "buen estado", "perfecto", "recien revisado", "recién revisado"}
 
 PRICE_RE = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*€")
@@ -218,6 +223,23 @@ def extract_listing_urls(listing_html: str) -> List[Tuple[str, str]]:
         out.append((cc_id, url))
     return out
 
+def extract_brand_from_breadcrumbs(soup: BeautifulSoup) -> str:
+    """
+    CashConverters suele poner la marca en el breadcrumb:
+    'Relojes > ... > Lotus' o similar.
+    Intentamos encontrar cualquier anchor cuyo texto sea una marca conocida (reputable o banned).
+    """
+    crumbs = soup.select("nav a, nav span, ol li a, ol li span, ul li a, ul li span")
+    for node in crumbs:
+        txt = canon(node.get_text(" ", strip=True))
+        if not txt:
+            continue
+        if txt in REPUTABLE_CANON:
+            return txt
+        if txt in BANNED_CANON:
+            return f"__banned__:{txt}"
+    return ""
+
 def parse_detail_page(url: str) -> Dict:
     html, status = fetch(url)
     soup = BeautifulSoup(html, "lxml")
@@ -227,9 +249,12 @@ def parse_detail_page(url: str) -> Dict:
     title = h1.get_text(" ", strip=True) if h1 else ""
 
     text = soup.get_text(" ", strip=True)
+
+    # Precio
     m = PRICE_RE.search(text)
     price = euro_to_float(m.group(1)) if m else None
 
+    # Estado
     lower = canon(text)
     estado = ""
     for c in ("perfecto", "muy bueno", "bueno", "usado"):
@@ -237,17 +262,23 @@ def parse_detail_page(url: str) -> Dict:
             estado = c
             break
 
+    # Disponibilidad (heurística simple)
     disponibilidad = "envío" if ("a domicilio" in lower or "envio" in lower) else "tienda"
 
+    # Tienda (heurística simple)
     tienda = ""
     for s in soup.stripped_strings:
         if "cash converters" in s.lower():
             tienda = s.strip()
             break
 
-    brand = extract_brand_from_text(title + " " + title_tag + " " + text)
+    # ✅ Marca: primero breadcrumbs (más fiable), luego fallback a texto
+    brand = extract_brand_from_breadcrumbs(soup)
+    if not brand:
+        brand = extract_brand_from_text(title + " " + title_tag + " " + text) or ""
 
-    page_ok = bool(title) and (PRICE_RE.search(html) is not None)
+    # Page ok
+    page_ok = bool(title) and (price is not None)
 
     return {
         "url": url,
@@ -256,7 +287,7 @@ def parse_detail_page(url: str) -> Dict:
         "title_tag": title_tag[:180],
         "page_ok": page_ok,
         "title": title or title_tag,
-        "brand": brand or "",
+        "brand": brand,
         "price": price,
         "estado": estado,
         "disponibilidad": disponibilidad,
@@ -269,8 +300,11 @@ def classify_brand(brand: str) -> str:
         return "no_brand"
     if brand.startswith("__banned__"):
         return "banned_brand"
-    if canon(brand) in REPUTABLE_CANON:
+    b = canon(brand)
+    if b in REPUTABLE_CANON:
         return "reputable"
+    if b in BANNED_CANON:
+        return "banned_brand"
     return "not_reputable"
 
 def cond_label(estado: str, raw_text: str) -> str:
@@ -294,7 +328,6 @@ def run():
     c_net_ok = 0
 
     opportunities = []
-    candidates = []
 
     for seed in SEED_URLS:
         start = 0
@@ -320,10 +353,13 @@ def run():
                     c_page_bad += 1
                     continue
 
+                # keywords negativos (smartwatch / piezas / no funciona)
                 if has_banned_keywords(data.get("title", "") + " " + data.get("raw_text", "")):
                     continue
 
                 brand_class = classify_brand(data.get("brand", ""))
+
+                # ✅ contadores consistentes
                 if brand_class == "reputable":
                     c_brand_reputable += 1
                 elif brand_class == "banned_brand":
@@ -348,7 +384,15 @@ def run():
                 close_est = estimate_close(best_target, data.get("estado", ""))
                 net, roi = estimate_net_profit(buy, shipping, close_est)
 
-                cand = {
+                if match < MIN_MATCH_SCORE:
+                    continue
+                c_match_ok += 1
+
+                if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
+                    continue
+                c_net_ok += 1
+
+                opportunities.append({
                     "title": title,
                     "url": url,
                     "buy": buy,
@@ -359,18 +403,7 @@ def run():
                     "target": best_target.get("id", "—"),
                     "cond": cond_label(data.get("estado", ""), raw_text),
                     "shop": data.get("tienda") or "—",
-                }
-                candidates.append(cand)
-
-                if match < MIN_MATCH_SCORE:
-                    continue
-                c_match_ok += 1
-
-                if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
-                    continue
-                c_net_ok += 1
-
-                opportunities.append(cand)
+                })
 
             start += PAGE_SIZE
             time.sleep(CC_THROTTLE_S)
@@ -387,12 +420,12 @@ def run():
     for i, it in enumerate(top, 1):
         buy = f"{it['buy']:.2f}€"
         close = f"{it['close_est']:.0f}€" if it["close_est"] > 0 else "—"
-        net = f"{it['net']:.0f}€"
-        roi = f"{it['roi']*100:.0f}%"
+        net_s = f"{it['net']:.0f}€"
+        roi_s = f"{it['roi']*100:.0f}%"
         lines.append(
             f"{i}) [cc] {it['title']}\n"
             f"   💶 Compra: {buy} | 🚚 Envío: {DEFAULT_SHIPPING_EUR:.2f}€ | 🎯 Cierre est.: {close}\n"
-            f"   ✅ Neto est.: {net} | ROI: {roi} | Match: {it['match']} | Cond: {it['cond']}\n"
+            f"   ✅ Neto est.: {net_s} | ROI: {roi_s} | Match: {it['match']} | Cond: {it['cond']}\n"
             f"   🧩 Target: {it['target']}\n"
             f"   📍 {it['shop']}\n"
             f"   🔗 {it['url']}"
