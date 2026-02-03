@@ -6,7 +6,7 @@ on:
     # 07:00 Europe/Madrid = 06:00 UTC (invierno)
     - cron: "0 6 * * *"
   push:
-    branches: ["main"]
+    branches: [ "main" ]
 
 jobs:
   run-scanner:
@@ -36,16 +36,21 @@ jobs:
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           EBAY_MARKETPLACE_ID: "EBAY_ES"
+          EBAY_LIMIT: "50"
+          EBAY_THROTTLE_S: "0.35"
 
-          # 🔧 Calibración (cambia cuando quieras)
-          MIN_NET_EUR: "-10"
-          MIN_NET_ROI: "-0.05"
-          MIN_MATCH_SCORE: "45"
-          BUY_MAX_MULT: "10"
+          # ✅ Wristwatches category (reduce ruido: despertadores/piezas)
+          EBAY_DEFAULT_CATEGORY_ID: "31387"
+
+          # Producción (ajusta si quieres)
+          MIN_NET_EUR: "20"
+          MIN_NET_ROI: "0.05"
+          MIN_MATCH_SCORE: "50"
+          BUY_MAX_MULT: "1.25"
           ALLOW_FAKE_RISK: "low,medium"
 
-          # ✅ Esto fuerza un ping corto para comprobar Telegram aunque no haya oportunidades
-          TELEGRAM_PING: "1"
+          # Opcional
+          SEND_PING: "1"
 
         run: |
           python scanner.py
