@@ -3,23 +3,12 @@ name: timelab-morning-scanner-v2
 on:
   workflow_dispatch:
   schedule:
-    # 07:00 Europe/Madrid = 06:00 UTC en invierno
-    # (luego podemos automatizar cambio verano/invierno)
+    # 07:00 Europe/Madrid = 06:00 UTC (invierno)
     - cron: "0 6 * * *"
 
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
-
-    env:
-      # === EBAY ===
-      EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
-      EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-
-      # === TELEGRAM ===
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,8 +21,28 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml
+          pip install requests
 
       - name: Run TIMELAB scanner
+        env:
+          # Telegram
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+          # eBay API
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+          EBAY_MARKETPLACE_ID: EBAY_ES
+
+          # Calibración (sube a producción cuando quieras)
+          MIN_NET_EUR: "-10"
+          MIN_NET_ROI: "-0.05"
+          MIN_MATCH_SCORE: "45"
+          BUY_MAX_MULT: "10"
+
+          # Límite/balance
+          EBAY_LIMIT: "50"
+          EBAY_THROTTLE_S: "0.35"
+          HTTP_TIMEOUT: "25"
         run: |
           python scanner.py
