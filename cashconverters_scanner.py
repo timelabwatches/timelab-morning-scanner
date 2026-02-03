@@ -11,9 +11,9 @@ BASE = "https://www.cashconverters.es"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
-DEFAULT_TIMEOUT = float(os.getenv("CC_TIMEOUT", "20"))
-THROTTLE_S = float(os.getenv("CC_THROTTLE_S", "1.2"))
-MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "20"))
+DEFAULT_TIMEOUT = float(os.getenv("CC_TIMEOUT", "15"))
+THROTTLE_S = float(os.getenv("CC_THROTTLE_S", "0.8"))
+MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "10"))
 PAGE_SIZE = int(os.getenv("CC_PAGE_SIZE", "24"))
 SRULE = os.getenv("CC_SRULE", "new")
 
@@ -90,7 +90,7 @@ def extract_listing_urls(html: str):
     return out
 
 
-def parse_title_price_from_page(html: str):
+def parse_detail_page(html: str):
     soup = BeautifulSoup(html, "lxml")
 
     h1 = soup.select_one("h1")
@@ -100,7 +100,6 @@ def parse_title_price_from_page(html: str):
     m = PRICE_RE.search(text)
     price = euro_to_float(m.group(1)) if m else None
 
-    # señales simples
     lower = text.lower()
     estado = None
     for c in ("perfecto", "muy bueno", "bueno", "usado"):
@@ -111,7 +110,6 @@ def parse_title_price_from_page(html: str):
     disponibilidad = "envío" if ("a domicilio" in lower or "envio" in lower) else "tienda"
 
     tienda = None
-    # intento simple: cualquier línea que contenga "Cash Converters"
     for s in soup.stripped_strings:
         if "cash converters" in s.lower():
             tienda = s.strip()
@@ -127,7 +125,7 @@ def parse_title_price_from_page(html: str):
 
 
 def run():
-    # 1) mensaje de arranque (para confirmar que llega a Telegram)
+    # Ping inicial para confirmar ejecución
     tg_send("🧪 TIMELAB CashConverters scanner: started (debug)")
 
     items = []
@@ -137,9 +135,9 @@ def run():
         start = 0
         while len(items) < MAX_ITEMS:
             page_url = build_page_url(seed, start)
-            html = fetch(page_url)
+            listing_html = fetch(page_url)
 
-            pairs = extract_listing_urls(html)
+            pairs = extract_listing_urls(listing_html)
             if not pairs:
                 break
 
@@ -148,16 +146,16 @@ def run():
                     continue
                 seen_ids.add(cc_id)
 
-                # entrar a ficha para title/price/estado real
                 detail_html = fetch(url)
-                data = parse_title_price_from_page(detail_html)
+                data = parse_detail_page(detail_html)
                 data["url"] = url
                 data["id"] = cc_id
                 items.append(data)
 
-                time.sleep(THROTTLE_S)
                 if len(items) >= MAX_ITEMS:
                     break
+
+                time.sleep(THROTTLE_S)
 
             start += PAGE_SIZE
             time.sleep(THROTTLE_S)
