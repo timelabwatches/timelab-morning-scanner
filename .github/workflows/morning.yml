@@ -28,6 +28,8 @@ jobs:
 
       - name: Run TIMELAB scanner
         env:
+          PYTHONUNBUFFERED: "1"
+
           # Telegram
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -36,21 +38,17 @@ jobs:
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           EBAY_MARKETPLACE_ID: "EBAY_ES"
-          EBAY_LIMIT: "50"
-          EBAY_THROTTLE_S: "0.35"
-
-          # ✅ Wristwatches category (reduce ruido: despertadores/piezas)
           EBAY_DEFAULT_CATEGORY_ID: "31387"
 
-          # Producción (ajusta si quieres)
+          # Producción (tu modo normal)
           MIN_NET_EUR: "20"
           MIN_NET_ROI: "0.05"
           MIN_MATCH_SCORE: "50"
           BUY_MAX_MULT: "1.25"
           ALLOW_FAKE_RISK: "low,medium"
 
-          # Opcional
-          SEND_PING: "1"
+          # Seguridad: NO permitir targets genéricos tipo "Zenith vintage"
+          ALLOW_GENERIC_VINTAGE: "0"
 
         run: |
           python scanner.py
