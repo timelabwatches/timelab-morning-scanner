@@ -3,15 +3,12 @@ name: timelab-morning-scanner-v2
 on:
   workflow_dispatch:
   schedule:
-    # 07:00 Europe/Madrid = 06:00 UTC (invierno)
-    - cron: "0 6 * * *"
-  push:
-    branches: [ "main" ]
+    - cron: "30 7 * * *"
 
 jobs:
-  run-scanner:
+  run-ebay-scanner:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,31 +21,38 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install requests beautifulsoup4 lxml
 
-      - name: Run TIMELAB scanner
+      - name: Run eBay scanner
         env:
-          PYTHONUNBUFFERED: "1"
-
-          # Telegram
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-          # eBay
-          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
-          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-          EBAY_MARKETPLACE_ID: "EBAY_ES"
-          EBAY_DEFAULT_CATEGORY_ID: "31387"
-
-          # Producción (tu modo normal)
-          MIN_NET_EUR: "20"
-          MIN_NET_ROI: "0.05"
-          MIN_MATCH_SCORE: "50"
-          BUY_MAX_MULT: "1.25"
-          ALLOW_FAKE_RISK: "low,medium"
-
-          # Seguridad: NO permitir targets genéricos tipo "Zenith vintage"
-          ALLOW_GENERIC_VINTAGE: "0"
-
         run: |
-          python scanner.py
+          python scanner.py || true
+
+  run-cashconverters-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml
+
+      - name: Run CashConverters scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CC_MAX_ITEMS: "20"
+          CC_TIMEOUT: "20"
+          CC_THROTTLE_S: "1.2"
+        run: |
+          python cashconverters_scanner.py || true
