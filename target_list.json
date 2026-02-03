@@ -1,6 +1,6 @@
 {
   "version": "2026-02-03",
-  "notes": "TIMELAB target list v2 (precision). Removes generic brand+vintage targets and replaces them with specific vintage lines/refs to reduce parts/false positives and improve match quality.",
+  "notes": "TIMELAB target list v1 (updated). Adds explicit eBay API query per target for more reliable results.",
   "targets": [
     {
       "id": "LON_CONQUEST_AUTO",
@@ -29,6 +29,7 @@
       "expected_catawiki_eur": [800, 1400],
       "max_buy_eur": 750
     },
+
     {
       "id": "BMM_CLIFTON",
       "brand": "Baume & Mercier",
@@ -47,10 +48,11 @@
       "expected_catawiki_eur": [500, 900],
       "max_buy_eur": 400
     },
+
     {
       "id": "FC_CLASSICS",
       "brand": "Frederique Constant",
-      "model_keywords": ["classics"],
+      "model_keywords": ["frederique constant", "classics"],
       "query": "Frederique Constant Classics",
       "risk": "low",
       "expected_catawiki_eur": [650, 1100],
@@ -65,20 +67,12 @@
       "expected_catawiki_eur": [600, 1000],
       "max_buy_eur": 450
     },
+
     {
-      "id": "SINN_556",
+      "id": "SINN_556_104",
       "brand": "Sinn",
-      "model_keywords": ["556"],
-      "query": "Sinn 556",
-      "risk": "low",
-      "expected_catawiki_eur": [900, 1600],
-      "max_buy_eur": 900
-    },
-    {
-      "id": "SINN_104",
-      "brand": "Sinn",
-      "model_keywords": ["104"],
-      "query": "Sinn 104",
+      "model_keywords": ["sinn 556", "sinn 104", "556", "104"],
+      "query": "Sinn 556 OR Sinn 104",
       "risk": "low",
       "expected_catawiki_eur": [900, 1600],
       "max_buy_eur": 900
@@ -92,51 +86,26 @@
       "expected_catawiki_eur": [650, 1100],
       "max_buy_eur": 550
     },
+
     {
-      "id": "TAG_AQUARACER_WAF",
+      "id": "TAG_AQUARACER",
       "brand": "TAG Heuer",
-      "model_keywords": ["aquaracer", "waf"],
-      "query": "TAG Heuer Aquaracer WAF",
+      "model_keywords": ["aquaracer", "waf", "way"],
+      "query": "TAG Heuer Aquaracer WAF OR WAY",
       "risk": "medium",
       "expected_catawiki_eur": [850, 1500],
       "max_buy_eur": 800
     },
     {
-      "id": "TAG_AQUARACER_WAY",
+      "id": "TAG_FORMULA1",
       "brand": "TAG Heuer",
-      "model_keywords": ["aquaracer", "way"],
-      "query": "TAG Heuer Aquaracer WAY",
-      "risk": "medium",
-      "expected_catawiki_eur": [850, 1500],
-      "max_buy_eur": 800
-    },
-    {
-      "id": "TAG_FORMULA1_WAZ",
-      "brand": "TAG Heuer",
-      "model_keywords": ["formula 1", "waz"],
-      "query": "TAG Heuer Formula 1 WAZ",
+      "model_keywords": ["formula 1", "waz", "caw", "wau"],
+      "query": "TAG Heuer Formula 1 WAZ OR CAW OR WAU",
       "risk": "medium",
       "expected_catawiki_eur": [600, 1100],
       "max_buy_eur": 500
     },
-    {
-      "id": "TAG_FORMULA1_WAU",
-      "brand": "TAG Heuer",
-      "model_keywords": ["formula 1", "wau"],
-      "query": "TAG Heuer Formula 1 WAU",
-      "risk": "medium",
-      "expected_catawiki_eur": [600, 1100],
-      "max_buy_eur": 500
-    },
-    {
-      "id": "TAG_FORMULA1_CAW",
-      "brand": "TAG Heuer",
-      "model_keywords": ["formula 1", "caw"],
-      "query": "TAG Heuer Formula 1 CAW",
-      "risk": "medium",
-      "expected_catawiki_eur": [600, 1100],
-      "max_buy_eur": 500
-    },
+
     {
       "id": "TISSOT_SEASTAR_P80",
       "brand": "Tissot",
@@ -155,161 +124,74 @@
       "expected_catawiki_eur": [550, 950],
       "max_buy_eur": 450
     },
+
     {
-      "id": "HAM_KHAKI_FIELD",
+      "id": "HAM_KHAKI",
       "brand": "Hamilton",
-      "model_keywords": ["khaki field"],
-      "query": "Hamilton Khaki Field",
+      "model_keywords": ["khaki field", "murph"],
+      "query": "Hamilton Khaki Field OR Hamilton Murph",
       "risk": "low",
       "expected_catawiki_eur": [600, 1100],
       "max_buy_eur": 550
     },
     {
-      "id": "HAM_MURPH",
-      "brand": "Hamilton",
-      "model_keywords": ["murph"],
-      "query": "Hamilton Murph",
-      "risk": "low",
-      "expected_catawiki_eur": [600, 1100],
-      "max_buy_eur": 550
-    },
-    {
-      "id": "CERTINA_DS_ACTION_P80",
+      "id": "CERTINA_DS_ACTION",
       "brand": "Certina",
-      "model_keywords": ["ds action", "powermatic 80"],
-      "query": "Certina DS Action Powermatic 80",
+      "model_keywords": ["ds action", "powermatic 80", "diver"],
+      "query": "Certina DS Action Powermatic 80 diver",
       "risk": "low",
       "expected_catawiki_eur": [550, 1000],
       "max_buy_eur": 450
     },
+
     {
-      "id": "SEIKO_ALPINIST_SARB017",
+      "id": "SEIKO_ALPINIST",
       "brand": "Seiko",
-      "model_keywords": ["alpinist", "sarb017"],
-      "query": "Seiko Alpinist SARB017",
+      "model_keywords": ["alpinist", "sarb017", "spb121"],
+      "query": "Seiko Alpinist SARB017 OR SPB121",
       "risk": "medium",
       "expected_catawiki_eur": [550, 1000],
       "max_buy_eur": 450
     },
     {
-      "id": "SEIKO_ALPINIST_SPB121",
+      "id": "SEIKO_TURTLE_SAMURAI",
       "brand": "Seiko",
-      "model_keywords": ["alpinist", "spb121"],
-      "query": "Seiko Alpinist SPB121",
-      "risk": "medium",
-      "expected_catawiki_eur": [550, 1000],
-      "max_buy_eur": 450
-    },
-    {
-      "id": "SEIKO_TURTLE",
-      "brand": "Seiko",
-      "model_keywords": ["turtle", "prospex", "srp"],
-      "query": "Seiko Prospex Turtle SRP",
-      "risk": "medium",
-      "expected_catawiki_eur": [450, 900],
-      "max_buy_eur": 350
-    },
-    {
-      "id": "SEIKO_SAMURAI",
-      "brand": "Seiko",
-      "model_keywords": ["samurai", "prospex"],
-      "query": "Seiko Prospex Samurai",
+      "model_keywords": ["turtle", "samurai", "srp", "prospex"],
+      "query": "Seiko Prospex Turtle OR Samurai SRP",
       "risk": "medium",
       "expected_catawiki_eur": [450, 900],
       "max_buy_eur": 350
     },
 
     {
-      "id": "OMEGA_DEVILLE_1960S",
+      "id": "OMEGA_DEVILLE_VTG",
       "brand": "Omega",
-      "model_keywords": ["de ville", "automatic"],
-      "query": "Omega De Ville automatic",
-      "risk": "medium",
-      "expected_catawiki_eur": [750, 1400],
-      "max_buy_eur": 650
-    },
-    {
-      "id": "OMEGA_SEAMASTER_VTG",
-      "brand": "Omega",
-      "model_keywords": ["seamaster", "automatic"],
-      "query": "Omega Seamaster automatic",
-      "risk": "medium",
-      "expected_catawiki_eur": [800, 1600],
-      "max_buy_eur": 700
-    },
-
-    {
-      "id": "ZENITH_ESPADA_190050197",
-      "brand": "Zenith",
-      "model_keywords": ["espada", "19.0050.197"],
-      "query": "Zenith Espada 19.0050.197",
+      "model_keywords": ["de ville", "seamaster", "vintage"],
+      "query": "Omega De Ville vintage OR Omega Seamaster vintage",
       "risk": "medium",
       "expected_catawiki_eur": [700, 1400],
-      "max_buy_eur": 650
+      "max_buy_eur": 600,
+      "ebay_category_id": "31387"
     },
     {
-      "id": "ZENITH_SURF_010480460",
+      "id": "ZENITH_VTG",
       "brand": "Zenith",
-      "model_keywords": ["surf", "01.0480.460"],
-      "query": "Zenith Surf 01.0480.460",
+      "model_keywords": ["defy", "surf", "espada"],
+      "query": "Zenith Defy OR Zenith Surf OR Zenith Espada",
       "risk": "medium",
       "expected_catawiki_eur": [700, 1400],
-      "max_buy_eur": 650
+      "max_buy_eur": 600,
+      "ebay_category_id": "31387"
     },
     {
-      "id": "ZENITH_DEFY_VTG",
-      "brand": "Zenith",
-      "model_keywords": ["defy", "automatic"],
-      "query": "Zenith Defy automatic",
-      "risk": "medium",
-      "expected_catawiki_eur": [800, 1600],
-      "max_buy_eur": 750
-    },
-    {
-      "id": "ZENITH_ELPRIMERO_VTG",
-      "brand": "Zenith",
-      "model_keywords": ["el primero"],
-      "query": "Zenith El Primero",
-      "risk": "medium",
-      "expected_catawiki_eur": [1400, 2800],
-      "max_buy_eur": 1300
-    },
-
-    {
-      "id": "LONGINES_CONQUEST_VTG",
+      "id": "LONGINES_VTG",
       "brand": "Longines",
-      "model_keywords": ["conquest", "vintage"],
-      "query": "Longines Conquest vintage",
+      "model_keywords": ["vintage", "admiral", "flagship", "conquest"],
+      "query": "Longines Admiral OR Longines Flagship OR Longines Conquest vintage",
       "risk": "medium",
       "expected_catawiki_eur": [650, 1300],
-      "max_buy_eur": 600
-    },
-    {
-      "id": "LONGINES_ADMIRAL_VTG",
-      "brand": "Longines",
-      "model_keywords": ["admiral", "automatic"],
-      "query": "Longines Admiral automatic",
-      "risk": "medium",
-      "expected_catawiki_eur": [550, 1100],
-      "max_buy_eur": 500
-    },
-    {
-      "id": "LONGINES_FLAGSHIP_VTG",
-      "brand": "Longines",
-      "model_keywords": ["flagship", "automatic"],
-      "query": "Longines Flagship automatic",
-      "risk": "medium",
-      "expected_catawiki_eur": [650, 1300],
-      "max_buy_eur": 600
-    },
-    {
-      "id": "LONGINES_ULTRACHRON_VTG",
-      "brand": "Longines",
-      "model_keywords": ["ultrachron"],
-      "query": "Longines Ultrachron",
-      "risk": "medium",
-      "expected_catawiki_eur": [850, 1700],
-      "max_buy_eur": 800
+      "max_buy_eur": 550,
+      "ebay_category_id": "31387"
     }
   ]
 }
