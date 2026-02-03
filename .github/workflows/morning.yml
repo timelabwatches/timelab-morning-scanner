@@ -3,9 +3,36 @@ name: timelab-morning-scanner-v2
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 7 * * *"
+    - cron: "30 7 * * *"   # 07:30 UTC
 
 jobs:
+  run-ebay-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml
+
+      - name: Run eBay scanner (scanner.py)
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+        run: |
+          python scanner.py
+
   run-cashconverters-scanner:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -23,12 +50,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 lxml
 
-      - name: Run CashConverters scanner
+      - name: Run CashConverters scanner (cashconverters_scanner.py)
+        continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CC_MAX_ITEMS: "10"
-          CC_TIMEOUT: "15"
+          CC_MAX_ITEMS: "100"
+          CC_TIMEOUT: "20"
           CC_THROTTLE_S: "0.8"
+          CC_MIN_MATCH_SCORE: "65"
+          CC_MIN_NET_EUR: "20"
+          CC_MIN_NET_ROI: "0.08"
+          CLOSE_HAIRCUT: "0.90"
         run: |
           python cashconverters_scanner.py
