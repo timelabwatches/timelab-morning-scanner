@@ -55,12 +55,19 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CC_MAX_ITEMS: "100"
+
+          # ---- CashConverters scan depth / control ----
+          CC_MAX_ITEMS: "500"
+          CC_GOOD_BRANDS_TARGET: "60"
+          CC_THROTTLE_S: "0.7"
           CC_TIMEOUT: "20"
-          CC_THROTTLE_S: "0.8"
+          CC_DEBUG: "1"
+
+          # ---- Scoring / filters (TIMELAB) ----
           CC_MIN_MATCH_SCORE: "65"
           CC_MIN_NET_EUR: "20"
           CC_MIN_NET_ROI: "0.08"
           CLOSE_HAIRCUT: "0.90"
+
         run: |
           python cashconverters_scanner.py
