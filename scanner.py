@@ -8,27 +8,18 @@ from typing import List, Optional, Tuple, Dict
 
 import requests
 
+
 # =========================
 # CONFIG (TIMELAB)
 # =========================
 
-# 🔧 MODO CALIBRACIÓN (por env). En producción pon MIN_NET_EUR=20, MIN_NET_ROI=0.05, MIN_MATCH_SCORE=50
-MIN_NET_EUR = float(os.getenv("MIN_NET_EUR", "-10"))
-MIN_NET_ROI = float(os.getenv("MIN_NET_ROI", "-0.05"))
-MIN_MATCH_SCORE = int(os.getenv("MIN_MATCH_SCORE", "45"))
+MIN_NET_EUR = float(os.getenv("MIN_NET_EUR", "20"))
+MIN_NET_ROI = float(os.getenv("MIN_NET_ROI", "0.05"))
+MIN_MATCH_SCORE = int(os.getenv("MIN_MATCH_SCORE", "50"))
+ALLOW_FAKE_RISK = set(x.strip().lower() for x in os.getenv("ALLOW_FAKE_RISK", "low,medium").split(","))
 
-# ✅ Control del filtro buy_max
-# - calibración: 10
-# - producción: 1.25–1.50
-BUY_MAX_MULT = float(os.getenv("BUY_MAX_MULT", "10"))
+BUY_MAX_MULT = float(os.getenv("BUY_MAX_MULT", "1.25"))  # producción 1.25–1.5 | calibración 10
 
-ALLOW_FAKE_RISK = set(
-    x.strip()
-    for x in os.getenv("ALLOW_FAKE_RISK", "low,medium").split(",")
-    if x.strip()
-)
-
-# Cost model (ajustable)
 CATWIKI_COMMISSION = float(os.getenv("CATWIKI_COMMISSION", "0.125"))
 PAYMENT_PROCESSING = float(os.getenv("PAYMENT_PROCESSING", "0.0"))
 PACKAGING_EUR = float(os.getenv("PACKAGING_EUR", "5.0"))
@@ -41,22 +32,45 @@ HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25"))
 # eBay API
 EBAY_CLIENT_ID = (os.getenv("EBAY_CLIENT_ID") or "").strip()
 EBAY_CLIENT_SECRET = (os.getenv("EBAY_CLIENT_SECRET") or "").strip()
-EBAY_MARKETPLACE_ID = (os.getenv("EBAY_MARKETPLACE_ID") or "EBAY_ES").strip()  # EBAY_ES, EBAY_FR...
-EBAY_LIMIT = int(os.getenv("EBAY_LIMIT", "50"))  # items por target
+EBAY_MARKETPLACE_ID = (os.getenv("EBAY_MARKETPLACE_ID") or "EBAY_ES").strip()
+EBAY_LIMIT = int(os.getenv("EBAY_LIMIT", "50"))
 EBAY_THROTTLE_S = float(os.getenv("EBAY_THROTTLE_S", "0.35"))
 
-# ✅ EU location: soporta texto y códigos ISO-2
-EU_TEXT = {
-    "spain","españa","france","francia","germany","alemania","italy","italia",
-    "portugal","belgium","belgica","belgique","netherlands","países bajos","pays-bas",
-    "austria","ireland","finland","sweden","denmark","poland","czech","slovakia",
-    "slovenia","croatia","hungary","romania","bulgaria","greece","luxembourg",
-    "latvia","lithuania","estonia","cyprus","malta"
-}
+
+# =========================
+# EU HELPERS (IMPORTANT)
+# =========================
+
 EU_ISO2 = {
-    "ES","FR","DE","IT","PT","BE","NL","AT","IE","FI","SE","DK","PL","CZ","SK","SI","HR",
-    "HU","RO","BG","GR","LU","LV","LT","EE","CY","MT"
+    "ES","FR","DE","IT","PT","BE","NL","LU","IE","AT","FI","SE","DK","PL","CZ","SK","SI","HR",
+    "HU","RO","BG","GR","CY","MT","LV","LT","EE"
 }
+
+def norm(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+def is_eu_location(loc: str) -> bool:
+    """
+    eBay Browse API suele dar itemLocation.country como ISO2 (p.ej. 'DE')
+    y lo montamos como 'city, DE'. Reconocemos esos códigos y también texto.
+    """
+    if not loc:
+        return True
+
+    raw = loc.strip()
+    # intenta sacar ISO2 al final: "Madrid, ES"
+    m = re.search(r"\b([A-Z]{2})\b\s*$", raw)
+    if m:
+        return m.group(1).upper() in EU_ISO2
+
+    l = norm(raw)
+    # fallback muy permisivo: si contiene nombres de países típicos
+    common = ["spain","españa","france","francia","germany","alemania","italy","italia","portugal",
+              "belgium","bélgica","netherlands","países bajos","austria","ireland","finland","sweden",
+              "denmark","poland","czech","slovakia","slovenia","croatia","hungary","romania","bulgaria",
+              "greece","luxembourg","latvia","lithuania","estonia","cyprus","malta"]
+    return any(c in l for c in common)
+
 
 # =========================
 # DATA STRUCTURES
@@ -82,7 +96,7 @@ class Listing:
     price_eur: float
     shipping_eur: float
     url: str
-    location_text: str  # "Madrid, ES" o "ES"
+    location_text: str
 
 @dataclass
 class Candidate:
@@ -93,33 +107,10 @@ class Candidate:
     net_profit: float
     net_roi: float
 
+
 # =========================
-# HELPERS
+# MATCH + PROFIT
 # =========================
-
-def norm(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip().lower())
-
-def now_utc() -> str:
-    return dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-
-def is_eu_location(loc: str) -> bool:
-    """
-    Acepta:
-    - texto ("Spain", "Francia", etc.)
-    - ISO-2 ("ES", "FR", etc.)
-    - strings tipo "Madrid, ES"
-    """
-    if not loc:
-        return True
-    l = (loc or "").strip()
-    # ISO-2 anywhere in string
-    for code in EU_ISO2:
-        if re.search(rf"\b{re.escape(code)}\b", l.upper()):
-            return True
-    # text match
-    lt = norm(l)
-    return any(t in lt for t in EU_TEXT)
 
 def compute_match_score(title: str, target: TargetModel) -> int:
     t = norm(title)
@@ -134,7 +125,6 @@ def compute_match_score(title: str, target: TargetModel) -> int:
     model_kws = kws[1:] if len(kws) > 1 else []
 
     score = 0
-
     if brand and brand in t:
         score += 45
 
@@ -166,6 +156,10 @@ def estimate_net_profit(buy: float, ship: float, close: float) -> Tuple[float, f
     roi = net / max(1.0, cost)
     return net, roi
 
+def now_utc() -> str:
+    return dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+
 # =========================
 # TARGET LIST
 # =========================
@@ -185,12 +179,7 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
     for t in data:
         brand = norm(t.get("brand", ""))
         mkws = t.get("model_keywords", []) or []
-        query = (t.get("query") or "").strip()
-        model_name = (t.get("model") or "").strip()
-
-        if not mkws and (brand and model_name):
-            mkws = [brand, model_name]
-        if not brand:
+        if not brand or not mkws:
             continue
 
         kws = [norm(k) for k in mkws if norm(k)]
@@ -199,24 +188,18 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
         else:
             kws = [brand] + [k for k in kws if k != brand]
 
-        close_med = 0.0
-        if "expected_catawiki_eur" in t and isinstance(t["expected_catawiki_eur"], list):
-            exp = t["expected_catawiki_eur"]
-            lo = float(exp[0]) if len(exp) > 0 else 0.0
-            hi = float(exp[1]) if len(exp) > 1 else 0.0
-            close_med = (lo + hi) / 2.0 if (lo > 0 and hi > 0) else max(lo, hi, 0.0)
-        else:
-            close_med = float(t.get("expected_hammer_eur", 0.0) or 0.0)
+        exp = t.get("expected_catawiki_eur", [0, 0])
+        lo = float(exp[0]) if isinstance(exp, list) and len(exp) > 0 else 0.0
+        hi = float(exp[1]) if isinstance(exp, list) and len(exp) > 1 else 0.0
+        close_med = (lo + hi) / 2.0 if (lo > 0 and hi > 0) else max(lo, hi, 0.0)
 
         buy_max = float(t.get("max_buy_eur", 0.0) or 0.0)
 
-        if not query:
-            query = " ".join([k for k in [t.get("brand", ""), model_name] if k]).strip()
-            if not query:
-                query = " ".join(kws[:3]).strip()
+        # Query para eBay: marca + keywords principales (sin duplicar)
+        query = " ".join(kws[:4]).strip()
 
         targets.append(TargetModel(
-            key=str(t.get("id", f"{brand}_{model_name or (kws[1] if len(kws)>1 else 'model')}")),
+            key=str(t.get("id", f"{brand}_{kws[1] if len(kws)>1 else 'model'}")),
             keywords=kws,
             refs=t.get("refs", []) or [],
             tier=str(t.get("tier", "B")),
@@ -232,8 +215,9 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
 
     return targets
 
+
 # =========================
-# EBAY API (NO SCRAPING)
+# EBAY API
 # =========================
 
 def ebay_oauth_app_token() -> str:
@@ -242,7 +226,10 @@ def ebay_oauth_app_token() -> str:
 
     url = "https://api.ebay.com/identity/v1/oauth2/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    data = {"grant_type": "client_credentials", "scope": "https://api.ebay.com/oauth/api_scope"}
+    data = {
+        "grant_type": "client_credentials",
+        "scope": "https://api.ebay.com/oauth/api_scope"
+    }
 
     r = requests.post(url, headers=headers, data=data, auth=(EBAY_CLIENT_ID, EBAY_CLIENT_SECRET), timeout=HTTP_TIMEOUT)
     if r.status_code != 200:
@@ -272,21 +259,23 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
     for it in items:
         title = it.get("title") or ""
         url = it.get("itemWebUrl") or ""
-
         price = it.get("price") or {}
+        currency = (price.get("currency") or "").upper()
         try:
-            price_eur = float(price.get("value")) if price.get("value") is not None else None
+            price_eur = float(price.get("value"))
         except Exception:
-            price_eur = None
-        if price_eur is None:
             continue
 
-        ship_eur = 0.0  # (lo dejamos 0 por ahora)
+        # En search, shipping suele no venir: lo dejamos 0
+        ship_eur = 0.0
 
         item_loc = it.get("itemLocation") or {}
-        cc = (item_loc.get("country") or "").strip()  # ISO-2 normalmente
-        city = (item_loc.get("city") or "").strip()
-        loc = f"{city}, {cc}" if (city and cc) else (cc or city or "")
+        cc = (item_loc.get("country") or "").upper()
+        city = (item_loc.get("city") or "")
+        loc = f"{city}, {cc}".strip(", ") if (city or cc) else ""
+
+        # Si viene una moneda rara, seguimos (más adelante podemos convertir)
+        _ = currency
 
         out.append(Listing(
             source="ebay",
@@ -300,6 +289,7 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
 
     return out
 
+
 # =========================
 # TELEGRAM
 # =========================
@@ -307,20 +297,19 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
 def tg_send(msg: str) -> None:
     token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
     chat = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
-    if not token or not chat:
-        print("[WARN] Missing TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID")
-        print(msg)
-        return
 
-    try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat, "text": msg, "disable_web_page_preview": True},
-            timeout=HTTP_TIMEOUT
-        )
-        print("Telegram:", r.status_code, r.text[:300])
-    except Exception as e:
-        print("Telegram error:", str(e))
+    # IMPORTANTE: si faltan, fallamos el job (así lo ves en Actions)
+    if not token or not chat:
+        raise RuntimeError("Faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en env (Secrets no inyectados).")
+
+    r = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat, "text": msg, "disable_web_page_preview": True},
+        timeout=HTTP_TIMEOUT
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Telegram error {r.status_code}: {r.text[:500]}")
+
 
 # =========================
 # MAIN
@@ -329,47 +318,31 @@ def tg_send(msg: str) -> None:
 def main():
     now = now_utc()
 
-    try:
-        targets = load_targets_from_json("target_list.json")
-    except Exception as e:
-        tg_send(f"🕗 TIMELAB Morning Scan\n{now}\n\n❌ Error leyendo target_list.json:\n{str(e)[:800]}")
-        raise
-
-    try:
-        token = ebay_oauth_app_token()
-    except Exception as e:
-        tg_send(f"🕗 TIMELAB Morning Scan\n{now}\n\n❌ Error OAuth eBay:\n{str(e)[:800]}")
-        raise
+    targets = load_targets_from_json("target_list.json")
+    token = ebay_oauth_app_token()
 
     listings: List[Listing] = []
     counts = {"ebay": 0}
+
     for t in targets:
-        try:
-            got = ebay_search(token, query=t.query, category_id=t.ebay_category_id, limit=EBAY_LIMIT)
-            listings.extend(got)
-            counts["ebay"] += len(got)
-            time.sleep(EBAY_THROTTLE_S)
-        except Exception as e:
-            print("EBAY ERROR:", t.key, str(e)[:300])
+        got = ebay_search(token, query=t.query, category_id=t.ebay_category_id, limit=EBAY_LIMIT)
+        listings.extend(got)
+        counts["ebay"] += len(got)
+        time.sleep(EBAY_THROTTLE_S)
 
     if not listings:
         tg_send(
             f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})\n{now}\n\n"
             f"⚠️ 0 listings recogidos desde eBay API.\n"
-            f"Revisa query/marketplace/token.\n"
+            f"Revisa: marketplace={EBAY_MARKETPLACE_ID} | queries | token.\n"
         )
         return
 
     candidates: List[Candidate] = []
     raw_scored: List[Tuple[int, Listing, TargetModel, float, float]] = []
 
-    filtered_loc = 0
-    filtered_buymax = 0
-    scored_ok = 0
-
     for li in listings:
         if not is_eu_location(li.location_text):
-            filtered_loc += 1
             continue
 
         best_ms = -1
@@ -383,16 +356,12 @@ def main():
         if not best_t:
             continue
 
-        expected_close = best_t.catwiki_close_med
-        if expected_close <= 0:
-            expected_close = max(li.price_eur * 1.8, li.price_eur + 150)
-
+        expected_close = best_t.catwiki_close_med if best_t.catwiki_close_med > 0 else max(li.price_eur * 1.8, li.price_eur + 150)
         net, roi = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
         raw_scored.append((best_ms, li, best_t, net, roi))
-        scored_ok += 1
 
+        # buy_max controlable
         if best_t.buy_max > 0 and li.price_eur > (best_t.buy_max * BUY_MAX_MULT):
-            filtered_buymax += 1
             continue
 
         if best_ms < MIN_MATCH_SCORE:
@@ -414,54 +383,54 @@ def main():
     candidates.sort(key=lambda c: (c.net_profit, c.match_score), reverse=True)
     top = candidates[:10]
 
-    # --- Report ---
-    header = [
-        f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})",
-        f"{now}",
-        "",
-        f"Recolectado: eBay={counts['ebay']}",
-        f"Scored: {scored_ok} | filtered_loc: {filtered_loc} | filtered_buymax: {filtered_buymax}",
-        f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | buy_max×{BUY_MAX_MULT} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
-        ""
-    ]
-
     if not top:
         raw_scored.sort(key=lambda x: (x[0], x[3]), reverse=True)
         raw_top = raw_scored[:5]
 
-        lines = header + [
+        lines = [
+            f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})\n{now}",
+            "",
+            f"Recolectado: eBay={counts['ebay']}",
+            f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
+            "",
             "❌ Sin oportunidades que pasen filtros.",
             "",
             "🧪 SMOKE TEST (Top RAW por match, aunque no cumplan margen):",
             ""
         ]
 
-        if not raw_top:
-            lines.append("— (vacío) No hay items ni siquiera tras scoring. Revisa el filtro de localización o queries.")
-        else:
-            for i, (ms, li, t, net, roi) in enumerate(raw_top, 1):
-                lines.append(
-                    f"{i}) [ebay] {li.title}\n"
-                    f"   📍 {li.location_text or 'N/A'}\n"
-                    f"   💶 {li.price_eur:.0f}€ | Neto est. {net:.0f}€ | ROI {int(roi*100)}% | Match {ms}\n"
-                    f"   🔗 {li.url}\n"
-                )
+        for i, (ms, li, _, net, roi) in enumerate(raw_top, 1):
+            lines.append(
+                f"{i}) [ebay] {li.title}\n"
+                f"   💶 {li.price_eur:.0f}€ | Neto est. {net:.0f}€ | ROI {int(roi*100)}% | Match {ms}\n"
+                f"   📍 {li.location_text}\n"
+                f"   🔗 {li.url}\n"
+            )
 
         tg_send("\n".join(lines))
         return
 
-    msg = header + [f"✅ TOP {len(top)} oportunidades:\n"]
+    msg = [
+        f"🕗 TIMELAB Morning Scan — TOP {len(top)} (eBay API {EBAY_MARKETPLACE_ID})",
+        f"{now}",
+        "",
+        f"Recolectado: eBay={counts['ebay']}",
+        f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
+        ""
+    ]
+
     for i, c in enumerate(top, 1):
         li = c.listing
         msg.append(
             f"{i}) [ebay] {li.title}\n"
-            f"   📍 {li.location_text or 'N/A'}\n"
             f"   💶 Compra: {li.price_eur:.0f}€ | 🎯 Cierre est.: {c.expected_close:.0f}€\n"
             f"   ✅ Neto est.: {c.net_profit:.0f}€ | ROI: {int(c.net_roi*100)}% | Match: {c.match_score}\n"
+            f"   📍 {li.location_text}\n"
             f"   🔗 {li.url}\n"
         )
 
     tg_send("\n".join(msg))
+
 
 if __name__ == "__main__":
     main()
