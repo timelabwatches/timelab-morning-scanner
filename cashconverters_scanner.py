@@ -15,7 +15,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 CC_TIMEOUT = float(os.getenv("CC_TIMEOUT", "20"))
 CC_THROTTLE_S = float(os.getenv("CC_THROTTLE_S", "0.8"))
-CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "100"))
+CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "120"))
 
 MIN_MATCH_SCORE = int(os.getenv("CC_MIN_MATCH_SCORE", "65"))
 MIN_NET_EUR = float(os.getenv("CC_MIN_NET_EUR", "20"))
@@ -24,7 +24,7 @@ CLOSE_HAIRCUT = float(os.getenv("CLOSE_HAIRCUT", "0.90"))
 
 DEFAULT_SHIPPING_EUR = float(os.getenv("CC_DEFAULT_SHIPPING_EUR", "0.0"))
 
-DEBUG_CC = os.getenv("CC_DEBUG", "1").strip() == "1"   # default ON for now
+DEBUG_CC = os.getenv("CC_DEBUG", "1").strip() == "1"
 
 PAGE_SIZE = int(os.getenv("CC_PAGE_SIZE", "24"))
 SRULE = os.getenv("CC_SRULE", "new")
@@ -50,16 +50,16 @@ SEED_URLS = [
 
 # ===== Brand policy =====
 REPUTABLE_BRANDS = {
-    "rolex", "tudor", "omega", "longines", "tag heuer", "heuer", "breitling",
-    "zenith", "jaeger-lecoultre", "jlc", "iwc", "panerai", "cartier",
-    "bvlgari", "bulgari", "baume & mercier", "baume mercier",
+    "rolex", "tudor", "omega", "longines", "tag heuer", "breitling",
+    "zenith", "jaeger lecoultre", "iwc", "panerai", "cartier",
+    "bulgari", "baume mercier",
     "tissot", "hamilton", "certina", "oris", "rado",
     "seiko", "grand seiko", "citizen", "orient", "mido",
     "edox", "doxa", "eterna", "fortis", "sinn", "nomos",
-    "maurice lacroix", "frederique constant", "frédérique constant",
+    "maurice lacroix", "frederique constant",
     "vacheron constantin", "audemars piguet", "patek philippe",
-    "girard-perregaux", "glashütte", "glashuette", "glashütte original",
-    "hublot", "chopard", "montblanc", "u-boat", "ulysse nardin",
+    "girard perregaux", "glashutte", "glashutte original",
+    "hublot", "chopard", "montblanc", "u boat", "ulysse nardin",
     "raymond weil", "alpina", "laco", "stowa",
 }
 
@@ -81,6 +81,9 @@ POSITIVE_KEYWORDS = {"revisado", "funciona", "buen estado", "perfecto", "recien 
 
 PRICE_RE = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*€")
 ID_RE = re.compile(r"/segunda-mano/([^/]+)\.html")
+
+# Detect brand token in title like: "reloj ... tissot ..." or "tag-heuer"
+BRAND_TOKEN_RE = re.compile(r"\b([a-zA-Z][a-zA-Z0-9&\.\- ]{1,30})\b")
 
 def euro_to_float(s: str) -> float:
     s = s.replace(".", "").replace(",", ".")
@@ -109,22 +112,66 @@ def build_page_url(seed: str, start: int) -> str:
 def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
 
-def has_banned_keywords(text: str) -> bool:
-    t = normalize(text)
-    return any(k in t for k in BANNED_KEYWORDS)
+def canon(s: str) -> str:
+    """
+    Canonical form for brand matching:
+    - lowercase
+    - replace accents-ish by removing non-ascii
+    - remove punctuation & hyphens -> spaces
+    """
+    s = normalize(s)
+    s = s.replace("&", " ")
+    s = re.sub(r"[-_/\.]", " ", s)
+    s = re.sub(r"[^a-z0-9 ]+", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
-def brand_from_text(text: str) -> Optional[str]:
-    t = normalize(text)
-    for b in sorted(REPUTABLE_BRANDS, key=len, reverse=True):
-        if b in t:
+REPUTABLE_BRANDS_CANON = {canon(b) for b in REPUTABLE_BRANDS}
+BANNED_BRANDS_CANON = {canon(b) for b in BANNED_BRANDS}
+
+def has_banned_keywords(text: str) -> bool:
+    t = canon(text)
+    return any(canon(k) in t for k in BANNED_KEYWORDS)
+
+def extract_brand_from_title(title: str) -> Optional[str]:
+    """
+    More reliable:
+    - tokenizes title and finds first brand that matches canonical set
+    """
+    t = canon(title)
+    # Quick direct contains check for reputable brands (longest first)
+    for b in sorted(REPUTABLE_BRANDS_CANON, key=len, reverse=True):
+        if b and b in t:
             return b
-    for b in sorted(BANNED_BRANDS, key=len, reverse=True):
-        if b in t:
+    # detect banned
+    for b in sorted(BANNED_BRANDS_CANON, key=len, reverse=True):
+        if b and b in t:
             return f"__banned__:{b}"
     return None
 
+def extract_brand_from_meta(soup: BeautifulSoup) -> Optional[str]:
+    og = soup.select_one('meta[property="og:title"]')
+    if og and og.get("content"):
+        b = extract_brand_from_title(og["content"])
+        if b:
+            return b
+    tw = soup.select_one('meta[name="twitter:title"]')
+    if tw and tw.get("content"):
+        b = extract_brand_from_title(tw["content"])
+        if b:
+            return b
+    return None
+
+def extract_brand_from_breadcrumbs(soup: BeautifulSoup) -> Optional[str]:
+    crumbs = " ".join([c.get_text(" ", strip=True) for c in soup.select("nav a, .breadcrumb a")])
+    if crumbs.strip():
+        b = extract_brand_from_title(crumbs)
+        if b:
+            return b
+    return None
+
 def condition_boost(cond: str) -> float:
-    c = normalize(cond)
+    c = canon(cond)
     if "perfecto" in c or "muy bueno" in c:
         return 1.00
     if "bueno" in c:
@@ -134,14 +181,14 @@ def condition_boost(cond: str) -> float:
     return 0.95
 
 def compute_match_score_simple(title: str, target: Dict) -> int:
-    text = normalize(title)
+    text = canon(title)
     score = 0
-    t_brand = normalize(target.get("brand", ""))
+    t_brand = canon(target.get("brand", ""))
     if t_brand and t_brand in text:
         score += 55
     kws = target.get("keywords", []) or []
     for kw in kws:
-        kw_n = normalize(kw)
+        kw_n = canon(kw)
         if kw_n and kw_n in text:
             score += 10
     return int(max(0, min(100, score)))
@@ -205,14 +252,22 @@ def extract_listing_urls(listing_html: str) -> List[Tuple[str, str]]:
 
 def parse_detail_page(detail_html: str) -> Dict:
     soup = BeautifulSoup(detail_html, "lxml")
+
     h1 = soup.select_one("h1")
     title = h1.get_text(" ", strip=True) if h1 else "Sin título"
+
+    # Try to extract brand from multiple reliable sources
+    brand = extract_brand_from_title(title)
+    if not brand:
+        brand = extract_brand_from_meta(soup)
+    if not brand:
+        brand = extract_brand_from_breadcrumbs(soup)
 
     text = soup.get_text(" ", strip=True)
     m = PRICE_RE.search(text)
     price = euro_to_float(m.group(1)) if m else None
 
-    lower = normalize(text)
+    lower = canon(text)
     estado = ""
     for c in ("perfecto", "muy bueno", "bueno", "usado"):
         if c in lower:
@@ -234,6 +289,7 @@ def parse_detail_page(detail_html: str) -> Dict:
 
     return {
         "title": title,
+        "brand": brand or "",
         "price": price,
         "estado": estado,
         "disponibilidad": disponibilidad,
@@ -242,20 +298,34 @@ def parse_detail_page(detail_html: str) -> Dict:
         "description": desc,
     }
 
-def is_reputable_listing(title: str, raw_text: str) -> Tuple[bool, str]:
-    t = normalize(title + " " + raw_text)
-    if has_banned_keywords(t):
+def is_reputable_listing(data: Dict) -> Tuple[bool, str]:
+    title = data.get("title", "")
+    raw_text = data.get("raw_text", "")
+    brand = data.get("brand", "")
+
+    # keyword bans
+    if has_banned_keywords(title + " " + raw_text):
         return False, "banned_keywords"
-    b = brand_from_text(t)
-    if b is None:
+
+    b = brand.strip()
+    if not b:
+        # fallback on title again
+        b = extract_brand_from_title(title) or ""
+    if not b:
         return False, "no_brand"
+
     if b.startswith("__banned__"):
         return False, "banned_brand"
+
+    # ensure it is reputable
+    if canon(b) not in REPUTABLE_BRANDS_CANON:
+        return False, "not_reputable"
+
     return True, "ok"
 
 def cond_label(estado: str, raw_text: str) -> str:
-    t = normalize((estado or "") + " " + (raw_text or ""))
-    if any(k in t for k in POSITIVE_KEYWORDS):
+    t = canon((estado or "") + " " + (raw_text or ""))
+    if any(canon(k) in t for k in POSITIVE_KEYWORDS):
         return f"{estado or '—'}+"
     return f"{estado or '—'}"
 
@@ -265,14 +335,11 @@ def run():
     dedup = set()
     scanned = 0
 
-    # Debug counters
     c_brand_ok = 0
     c_match_ok = 0
     c_net_ok = 0
 
-    # For debug: keep best candidates even if rejected by net/roi
     candidates = []
-
     opportunities = []
 
     for seed in SEED_URLS:
@@ -295,14 +362,13 @@ def run():
                 scanned += 1
                 time.sleep(CC_THROTTLE_S)
 
-                title = data.get("title", "")
-                raw_text = data.get("raw_text", "")
-
-                ok_brand, why_brand = is_reputable_listing(title, raw_text)
+                ok_brand, why_brand = is_reputable_listing(data)
                 if not ok_brand:
                     continue
                 c_brand_ok += 1
 
+                title = data.get("title", "")
+                raw_text = data.get("raw_text", "")
                 buy = data.get("price") or 0.0
                 shipping = DEFAULT_SHIPPING_EUR
 
@@ -313,8 +379,7 @@ def run():
                 close_est = estimate_close(best_target, data.get("estado", ""))
                 net, roi = estimate_net_profit(buy, shipping, close_est)
 
-                # candidate snapshot for debugging
-                candidates.append({
+                cand = {
                     "title": title,
                     "url": url,
                     "buy": buy,
@@ -325,7 +390,8 @@ def run():
                     "target": best_target.get("id", "—"),
                     "cond": cond_label(data.get("estado", ""), raw_text),
                     "shop": data.get("tienda") or "—",
-                })
+                }
+                candidates.append(cand)
 
                 if match < MIN_MATCH_SCORE:
                     continue
@@ -335,7 +401,7 @@ def run():
                     continue
                 c_net_ok += 1
 
-                opportunities.append(candidates[-1])
+                opportunities.append(cand)
 
                 if scanned >= CC_MAX_ITEMS:
                     break
@@ -374,7 +440,6 @@ def run():
 
     tg_send("\n\n".join(lines))
 
-    # DEBUG SUMMARY MESSAGE (separado)
     if DEBUG_CC:
         candidates.sort(key=lambda x: (x["match"], x["net"]), reverse=True)
         cand_top = candidates[:10]
