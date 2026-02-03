@@ -23,16 +23,19 @@ MIN_NET_ROI = float(os.getenv("CC_MIN_NET_ROI", "0.08"))
 CLOSE_HAIRCUT = float(os.getenv("CLOSE_HAIRCUT", "0.90"))
 
 DEFAULT_SHIPPING_EUR = float(os.getenv("CC_DEFAULT_SHIPPING_EUR", "0.0"))
-
 DEBUG_CC = os.getenv("CC_DEBUG", "1").strip() == "1"
 
 PAGE_SIZE = int(os.getenv("CC_PAGE_SIZE", "24"))
 SRULE = os.getenv("CC_SRULE", "new")
 
+SESSION = requests.Session()
+
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; TIMELAB-WATCHES/1.0)",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
     "Connection": "keep-alive",
 }
 
@@ -48,7 +51,6 @@ SEED_URLS = [
     f"{BASE}/es/es/comprar/relojes/reloj-alta-gama/reloj-alta-gama-unisex/",
 ]
 
-# ===== Brand policy =====
 REPUTABLE_BRANDS = {
     "rolex", "tudor", "omega", "longines", "tag heuer", "breitling",
     "zenith", "jaeger lecoultre", "iwc", "panerai", "cartier",
@@ -82,9 +84,6 @@ POSITIVE_KEYWORDS = {"revisado", "funciona", "buen estado", "perfecto", "recien 
 PRICE_RE = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*€")
 ID_RE = re.compile(r"/segunda-mano/([^/]+)\.html")
 
-# Detect brand token in title like: "reloj ... tissot ..." or "tag-heuer"
-BRAND_TOKEN_RE = re.compile(r"\b([a-zA-Z][a-zA-Z0-9&\.\- ]{1,30})\b")
-
 def euro_to_float(s: str) -> float:
     s = s.replace(".", "").replace(",", ".")
     return float(s)
@@ -93,81 +92,47 @@ def tg_send(text: str) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (GitHub Secrets?)")
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    r = requests.post(url, timeout=CC_TIMEOUT, json={
+    r = SESSION.post(url, timeout=CC_TIMEOUT, json={
         "chat_id": TELEGRAM_CHAT_ID,
         "text": text,
         "disable_web_page_preview": True,
     })
     r.raise_for_status()
 
-def fetch(url: str) -> str:
-    r = requests.get(url, headers=HEADERS, timeout=CC_TIMEOUT)
-    r.raise_for_status()
-    return r.text
+def fetch(url: str) -> Tuple[str, int]:
+    r = SESSION.get(url, headers=HEADERS, timeout=CC_TIMEOUT, allow_redirects=True)
+    return r.text, r.status_code
 
 def build_page_url(seed: str, start: int) -> str:
     joiner = "&" if "?" in seed else "?"
     return f"{seed}{joiner}srule={SRULE}&start={start}&sz={PAGE_SIZE}"
 
-def normalize(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip().lower())
-
 def canon(s: str) -> str:
-    """
-    Canonical form for brand matching:
-    - lowercase
-    - replace accents-ish by removing non-ascii
-    - remove punctuation & hyphens -> spaces
-    """
-    s = normalize(s)
+    s = (s or "").strip().lower()
     s = s.replace("&", " ")
     s = re.sub(r"[-_/\.]", " ", s)
-    s = re.sub(r"[^a-z0-9 ]+", "", s)
+    s = re.sub(r"[^a-z0-9áéíóúñü ]+", "", s)
     s = re.sub(r"\s+", " ", s).strip()
+    # quita acentos básicos
+    trans = str.maketrans("áéíóúñü", "aeiounu")
+    s = s.translate(trans)
     return s
 
-REPUTABLE_BRANDS_CANON = {canon(b) for b in REPUTABLE_BRANDS}
-BANNED_BRANDS_CANON = {canon(b) for b in BANNED_BRANDS}
+REPUTABLE_CANON = {canon(b) for b in REPUTABLE_BRANDS}
+BANNED_CANON = {canon(b) for b in BANNED_BRANDS}
 
 def has_banned_keywords(text: str) -> bool:
     t = canon(text)
     return any(canon(k) in t for k in BANNED_KEYWORDS)
 
-def extract_brand_from_title(title: str) -> Optional[str]:
-    """
-    More reliable:
-    - tokenizes title and finds first brand that matches canonical set
-    """
-    t = canon(title)
-    # Quick direct contains check for reputable brands (longest first)
-    for b in sorted(REPUTABLE_BRANDS_CANON, key=len, reverse=True):
+def extract_brand_from_text(text: str) -> Optional[str]:
+    t = canon(text)
+    for b in sorted(REPUTABLE_CANON, key=len, reverse=True):
         if b and b in t:
             return b
-    # detect banned
-    for b in sorted(BANNED_BRANDS_CANON, key=len, reverse=True):
+    for b in sorted(BANNED_CANON, key=len, reverse=True):
         if b and b in t:
             return f"__banned__:{b}"
-    return None
-
-def extract_brand_from_meta(soup: BeautifulSoup) -> Optional[str]:
-    og = soup.select_one('meta[property="og:title"]')
-    if og and og.get("content"):
-        b = extract_brand_from_title(og["content"])
-        if b:
-            return b
-    tw = soup.select_one('meta[name="twitter:title"]')
-    if tw and tw.get("content"):
-        b = extract_brand_from_title(tw["content"])
-        if b:
-            return b
-    return None
-
-def extract_brand_from_breadcrumbs(soup: BeautifulSoup) -> Optional[str]:
-    crumbs = " ".join([c.get_text(" ", strip=True) for c in soup.select("nav a, .breadcrumb a")])
-    if crumbs.strip():
-        b = extract_brand_from_title(crumbs)
-        if b:
-            return b
     return None
 
 def condition_boost(cond: str) -> float:
@@ -186,8 +151,7 @@ def compute_match_score_simple(title: str, target: Dict) -> int:
     t_brand = canon(target.get("brand", ""))
     if t_brand and t_brand in text:
         score += 55
-    kws = target.get("keywords", []) or []
-    for kw in kws:
+    for kw in target.get("keywords", []) or []:
         kw_n = canon(kw)
         if kw_n and kw_n in text:
             score += 10
@@ -250,25 +214,79 @@ def extract_listing_urls(listing_html: str) -> List[Tuple[str, str]]:
         out.append((cc_id, url))
     return out
 
-def parse_detail_page(detail_html: str) -> Dict:
-    soup = BeautifulSoup(detail_html, "lxml")
+def parse_json_ld(soup: BeautifulSoup) -> Dict:
+    """
+    Try JSON-LD: often contains Product/Offer with name & price.
+    """
+    out = {}
+    for s in soup.select('script[type="application/ld+json"]'):
+        raw = (s.string or "").strip()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except Exception:
+            continue
 
+        # can be list or dict
+        objs = data if isinstance(data, list) else [data]
+        for obj in objs:
+            if not isinstance(obj, dict):
+                continue
+            # Product schema
+            name = obj.get("name") or ""
+            if name and "title" not in out:
+                out["title"] = name
+
+            offers = obj.get("offers")
+            if isinstance(offers, dict):
+                price = offers.get("price")
+                if price and "price" not in out:
+                    try:
+                        out["price"] = float(price)
+                    except Exception:
+                        pass
+            elif isinstance(offers, list):
+                for off in offers:
+                    if isinstance(off, dict) and off.get("price"):
+                        try:
+                            out["price"] = float(off["price"])
+                            break
+                        except Exception:
+                            pass
+    return out
+
+def page_sanity(soup: BeautifulSoup, html: str) -> bool:
+    """
+    Consider page valid if it has an h1 and a € price-like content.
+    """
     h1 = soup.select_one("h1")
-    title = h1.get_text(" ", strip=True) if h1 else "Sin título"
+    if not h1:
+        return False
+    if PRICE_RE.search(html) is None:
+        return False
+    return True
 
-    # Try to extract brand from multiple reliable sources
-    brand = extract_brand_from_title(title)
-    if not brand:
-        brand = extract_brand_from_meta(soup)
-    if not brand:
-        brand = extract_brand_from_breadcrumbs(soup)
+def parse_detail_page(url: str) -> Dict:
+    html, status = fetch(url)
+    soup = BeautifulSoup(html, "lxml")
 
+    # Basic fields
+    title = soup.select_one("h1").get_text(" ", strip=True) if soup.select_one("h1") else ""
     text = soup.get_text(" ", strip=True)
+
+    # JSON-LD fallback
+    jld = parse_json_ld(soup)
+    if not title and jld.get("title"):
+        title = jld["title"]
+
     m = PRICE_RE.search(text)
     price = euro_to_float(m.group(1)) if m else None
+    if price is None and "price" in jld:
+        price = jld.get("price")
 
-    lower = canon(text)
     estado = ""
+    lower = canon(text)
     for c in ("perfecto", "muy bueno", "bueno", "usado"):
         if c in lower:
             estado = c
@@ -282,12 +300,17 @@ def parse_detail_page(detail_html: str) -> Dict:
             tienda = s.strip()
             break
 
-    desc = ""
-    desc_el = soup.select_one('[class*="description"], [id*="description"]')
-    if desc_el:
-        desc = desc_el.get_text(" ", strip=True)
+    brand = extract_brand_from_text(title + " " + text)
 
+    # sanity + debug snippet info
+    page_ok = page_sanity(soup, html)
+    page_title_tag = soup.title.get_text(" ", strip=True) if soup.title else ""
     return {
+        "url": url,
+        "status": status,
+        "html_len": len(html),
+        "page_title_tag": page_title_tag[:160],
+        "page_ok": page_ok,
         "title": title,
         "brand": brand or "",
         "price": price,
@@ -295,7 +318,6 @@ def parse_detail_page(detail_html: str) -> Dict:
         "disponibilidad": disponibilidad,
         "tienda": tienda,
         "raw_text": text,
-        "description": desc,
     }
 
 def is_reputable_listing(data: Dict) -> Tuple[bool, str]:
@@ -303,24 +325,15 @@ def is_reputable_listing(data: Dict) -> Tuple[bool, str]:
     raw_text = data.get("raw_text", "")
     brand = data.get("brand", "")
 
-    # keyword bans
     if has_banned_keywords(title + " " + raw_text):
         return False, "banned_keywords"
 
-    b = brand.strip()
-    if not b:
-        # fallback on title again
-        b = extract_brand_from_title(title) or ""
-    if not b:
+    if not brand:
         return False, "no_brand"
-
-    if b.startswith("__banned__"):
+    if brand.startswith("__banned__"):
         return False, "banned_brand"
-
-    # ensure it is reputable
-    if canon(b) not in REPUTABLE_BRANDS_CANON:
+    if canon(brand) not in REPUTABLE_CANON:
         return False, "not_reputable"
-
     return True, "ok"
 
 def cond_label(estado: str, raw_text: str) -> str:
@@ -338,15 +351,17 @@ def run():
     c_brand_ok = 0
     c_match_ok = 0
     c_net_ok = 0
+    c_page_bad = 0
 
     candidates = []
     opportunities = []
+    bad_pages_samples = []
 
     for seed in SEED_URLS:
         start = 0
         while scanned < CC_MAX_ITEMS:
             page_url = build_page_url(seed, start)
-            listing_html = fetch(page_url)
+            listing_html, status = fetch(page_url)
             pairs = extract_listing_urls(listing_html)
             if not pairs:
                 break
@@ -356,20 +371,27 @@ def run():
                     continue
                 dedup.add(cc_id)
 
-                detail_html = fetch(url)
-                data = parse_detail_page(detail_html)
+                data = parse_detail_page(url)
 
                 scanned += 1
                 time.sleep(CC_THROTTLE_S)
 
-                ok_brand, why_brand = is_reputable_listing(data)
+                if not data.get("page_ok"):
+                    c_page_bad += 1
+                    if len(bad_pages_samples) < 3:
+                        bad_pages_samples.append(
+                            f"- status:{data.get('status')} len:{data.get('html_len')} titleTag:{data.get('page_title_tag')} url:{url}"
+                        )
+                    continue
+
+                ok_brand, why = is_reputable_listing(data)
                 if not ok_brand:
                     continue
                 c_brand_ok += 1
 
                 title = data.get("title", "")
                 raw_text = data.get("raw_text", "")
-                buy = data.get("price") or 0.0
+                buy = float(data.get("price") or 0.0)
                 shipping = DEFAULT_SHIPPING_EUR
 
                 best_target, match = pick_best_target(title, targets)
@@ -444,17 +466,25 @@ def run():
         candidates.sort(key=lambda x: (x["match"], x["net"]), reverse=True)
         cand_top = candidates[:10]
         d = [
-            f"🧪 TIMELAB CC Debug — scanned:{scanned} | brand_ok:{c_brand_ok} | match_ok:{c_match_ok} | net_ok:{c_net_ok}",
+            f"🧪 TIMELAB CC Debug — scanned:{scanned} | page_bad:{c_page_bad} | brand_ok:{c_brand_ok} | match_ok:{c_match_ok} | net_ok:{c_net_ok}",
             f"thresholds: match>={MIN_MATCH_SCORE} | net>={MIN_NET_EUR} OR roi>={MIN_NET_ROI} | haircut:{CLOSE_HAIRCUT}",
-            "",
-            "Top candidates (even if rejected):"
         ]
-        for i, it in enumerate(cand_top, 1):
-            d.append(
-                f"{i}) {it['title']}\n"
-                f"   buy:{it['buy']:.2f}€ close:{(it['close_est'] or 0):.0f}€ net:{it['net']:.0f}€ roi:{(it['roi']*100 if it['roi']!=-1 else -1):.0f}% match:{it['match']} target:{it['target']}\n"
-                f"   {it['url']}"
-            )
+        if bad_pages_samples:
+            d.append("")
+            d.append("Bad page samples:")
+            d.extend(bad_pages_samples)
+
+        d.append("")
+        d.append("Top candidates (even if rejected):")
+        if not cand_top:
+            d.append("(none)")
+        else:
+            for i, it in enumerate(cand_top, 1):
+                d.append(
+                    f"{i}) {it['title']}\n"
+                    f"   buy:{it['buy']:.2f}€ close:{(it['close_est'] or 0):.0f}€ net:{it['net']:.0f}€ roi:{(it['roi']*100 if it['roi']!=-1 else -1):.0f}% match:{it['match']} target:{it['target']}\n"
+                    f"   {it['url']}"
+                )
         tg_send("\n\n".join(d))
 
 if __name__ == "__main__":
