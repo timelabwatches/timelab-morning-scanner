@@ -11,6 +11,15 @@ jobs:
   run-scanner:
     runs-on: ubuntu-latest
 
+    env:
+      # === EBAY ===
+      EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+      EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+
+      # === TELEGRAM ===
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,8 +35,5 @@ jobs:
           pip install requests beautifulsoup4 lxml
 
       - name: Run TIMELAB scanner
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python scanner.py
