@@ -5,9 +5,8 @@ on:
   schedule:
     # 07:00 Europe/Madrid = 06:00 UTC (invierno)
     - cron: "0 6 * * *"
-  # Opcional: si quieres que corra al hacer cambios en main (no PR)
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   run-scanner:
@@ -38,12 +37,15 @@ jobs:
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           EBAY_MARKETPLACE_ID: "EBAY_ES"
 
-          # Calibración (puedes tocar luego)
+          # 🔧 Calibración (cambia cuando quieras)
           MIN_NET_EUR: "-10"
           MIN_NET_ROI: "-0.05"
           MIN_MATCH_SCORE: "45"
           BUY_MAX_MULT: "10"
           ALLOW_FAKE_RISK: "low,medium"
+
+          # ✅ Esto fuerza un ping corto para comprobar Telegram aunque no haya oportunidades
+          TELEGRAM_PING: "1"
 
         run: |
           python scanner.py
