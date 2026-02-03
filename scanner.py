@@ -13,9 +13,9 @@ from bs4 import BeautifulSoup
 # CONFIG (TIMELAB)
 # =========================
 
-MIN_NET_EUR = 120
-MIN_NET_ROI = 0.25
-MIN_MATCH_SCORE = 75
+MIN_NET_EUR = 20
+MIN_NET_ROI = 0.05
+MIN_MATCH_SCORE = 50
 ALLOW_FAKE_RISK = {"low", "medium"}
 
 CATWIKI_COMMISSION = 0.125
