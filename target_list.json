@@ -1,6 +1,6 @@
 {
   "version": "2026-02-03",
-  "notes": "TIMELAB target list v1 (updated). Adds explicit eBay API query per target for more reliable results.",
+  "notes": "TIMELAB target list v1.1 — Adds per-target must_include/must_exclude and condition keyword filters to reduce parts/quartz/lady noise.",
   "targets": [
     {
       "id": "LON_CONQUEST_AUTO",
@@ -9,82 +9,100 @@
       "query": "Longines Conquest automatic",
       "risk": "low",
       "expected_catawiki_eur": [700, 1200],
-      "max_buy_eur": 550
+      "max_buy_eur": 550,
+      "must_include": ["longines", "conquest", "automatic"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "spares", "broken", "not working", "defect", "case", "cassa", "boitier", "dial", "cadran", "crown", "corona", "bracelet", "bracciale", "box", "scatola", "papers", "documenti"]
     },
     {
       "id": "ORIS_BCPD",
       "brand": "Oris",
       "model_keywords": ["big crown", "pointer date"],
-      "query": "Oris Big Crown Pointer Date",
+      "query": "Oris Big Crown Pointer Date automatic",
       "risk": "low",
       "expected_catawiki_eur": [800, 1300],
-      "max_buy_eur": 650
+      "max_buy_eur": 650,
+      "must_include": ["oris", "big crown", "pointer", "date"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
     {
       "id": "ORIS_AQUIS_DATE",
       "brand": "Oris",
       "model_keywords": ["aquis", "date"],
-      "query": "Oris Aquis Date",
+      "query": "Oris Aquis Date automatic",
       "risk": "low",
       "expected_catawiki_eur": [800, 1400],
-      "max_buy_eur": 750
+      "max_buy_eur": 750,
+      "must_include": ["oris", "aquis"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
 
     {
       "id": "BMM_CLIFTON",
       "brand": "Baume & Mercier",
       "model_keywords": ["clifton"],
-      "query": "Baume Mercier Clifton",
+      "query": "Baume Mercier Clifton automatic",
       "risk": "low",
       "expected_catawiki_eur": [700, 1100],
-      "max_buy_eur": 550
+      "max_buy_eur": 550,
+      "must_include": ["baume", "mercier", "clifton"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
     {
       "id": "BMM_CLASSIMA",
       "brand": "Baume & Mercier",
       "model_keywords": ["classima"],
-      "query": "Baume Mercier Classima",
+      "query": "Baume Mercier Classima automatic",
       "risk": "low",
       "expected_catawiki_eur": [500, 900],
-      "max_buy_eur": 400
+      "max_buy_eur": 400,
+      "must_include": ["baume", "mercier", "classima"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
 
     {
       "id": "FC_CLASSICS",
       "brand": "Frederique Constant",
       "model_keywords": ["frederique constant", "classics"],
-      "query": "Frederique Constant Classics",
+      "query": "Frederique Constant Classics automatic",
       "risk": "low",
       "expected_catawiki_eur": [650, 1100],
-      "max_buy_eur": 500
+      "max_buy_eur": 500,
+      "must_include": ["frederique", "constant"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
     {
       "id": "RW_FREELANCER",
       "brand": "Raymond Weil",
       "model_keywords": ["freelancer"],
-      "query": "Raymond Weil Freelancer",
+      "query": "Raymond Weil Freelancer automatic",
       "risk": "low",
       "expected_catawiki_eur": [600, 1000],
-      "max_buy_eur": 450
+      "max_buy_eur": 450,
+      "must_include": ["raymond", "weil", "freelancer"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
 
     {
       "id": "SINN_556_104",
       "brand": "Sinn",
       "model_keywords": ["sinn 556", "sinn 104", "556", "104"],
-      "query": "Sinn 556 OR Sinn 104",
+      "query": "Sinn 556 OR Sinn 104 automatic",
       "risk": "low",
       "expected_catawiki_eur": [900, 1600],
-      "max_buy_eur": 900
+      "max_buy_eur": 900,
+      "must_include": ["sinn"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
     {
       "id": "JUN_MAX_BILL",
       "brand": "Junghans",
       "model_keywords": ["max bill"],
-      "query": "Junghans Max Bill",
+      "query": "Junghans Max Bill automatic",
       "risk": "low",
       "expected_catawiki_eur": [650, 1100],
-      "max_buy_eur": 550
+      "max_buy_eur": 550,
+      "must_include": ["junghans", "max", "bill"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
 
     {
@@ -94,7 +112,9 @@
       "query": "TAG Heuer Aquaracer WAF OR WAY",
       "risk": "medium",
       "expected_catawiki_eur": [850, 1500],
-      "max_buy_eur": 800
+      "max_buy_eur": 800,
+      "must_include": ["tag", "heuer", "aquaracer"],
+      "must_exclude": ["lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet only", "box only", "papers only"]
     },
     {
       "id": "TAG_FORMULA1",
@@ -103,7 +123,9 @@
       "query": "TAG Heuer Formula 1 WAZ OR CAW OR WAU",
       "risk": "medium",
       "expected_catawiki_eur": [600, 1100],
-      "max_buy_eur": 500
+      "max_buy_eur": 500,
+      "must_include": ["tag", "heuer"],
+      "must_exclude": ["lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet only", "box only", "papers only"]
     },
 
     {
@@ -113,7 +135,9 @@
       "query": "Tissot Seastar Powermatic 80",
       "risk": "medium",
       "expected_catawiki_eur": [550, 950],
-      "max_buy_eur": 420
+      "max_buy_eur": 420,
+      "must_include": ["tissot", "seastar", "powermatic", "80"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet only", "box only", "papers only"]
     },
     {
       "id": "TISSOT_PRX_AUTO",
@@ -122,17 +146,21 @@
       "query": "Tissot PRX Powermatic 80",
       "risk": "medium",
       "expected_catawiki_eur": [550, 950],
-      "max_buy_eur": 450
+      "max_buy_eur": 450,
+      "must_include": ["tissot", "prx", "powermatic", "80"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet only", "box only", "papers only"]
     },
 
     {
       "id": "HAM_KHAKI",
       "brand": "Hamilton",
       "model_keywords": ["khaki field", "murph"],
-      "query": "Hamilton Khaki Field OR Hamilton Murph",
+      "query": "Hamilton Khaki Field OR Hamilton Murph automatic",
       "risk": "low",
       "expected_catawiki_eur": [600, 1100],
-      "max_buy_eur": 550
+      "max_buy_eur": 550,
+      "must_include": ["hamilton"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet", "box", "papers"]
     },
     {
       "id": "CERTINA_DS_ACTION",
@@ -141,7 +169,9 @@
       "query": "Certina DS Action Powermatic 80 diver",
       "risk": "low",
       "expected_catawiki_eur": [550, 1000],
-      "max_buy_eur": 450
+      "max_buy_eur": 450,
+      "must_include": ["certina", "ds", "action", "powermatic", "80"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet only", "box only", "papers only"]
     },
 
     {
@@ -151,7 +181,9 @@
       "query": "Seiko Alpinist SARB017 OR SPB121",
       "risk": "medium",
       "expected_catawiki_eur": [550, 1000],
-      "max_buy_eur": 450
+      "max_buy_eur": 450,
+      "must_include": ["seiko", "alpinist"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet only", "box only", "papers only"]
     },
     {
       "id": "SEIKO_TURTLE_SAMURAI",
@@ -160,38 +192,45 @@
       "query": "Seiko Prospex Turtle OR Samurai SRP",
       "risk": "medium",
       "expected_catawiki_eur": [450, 900],
-      "max_buy_eur": 350
+      "max_buy_eur": 350,
+      "must_include": ["seiko"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet only", "box only", "papers only"]
     },
 
     {
       "id": "OMEGA_DEVILLE_VTG",
       "brand": "Omega",
       "model_keywords": ["de ville", "seamaster", "vintage"],
-      "query": "Omega De Ville vintage OR Omega Seamaster vintage",
+      "query": "Omega De Ville automatic vintage OR Omega Seamaster automatic vintage",
       "risk": "medium",
       "expected_catawiki_eur": [700, 1400],
       "max_buy_eur": 600,
-      "ebay_category_id": "31387"
+      "must_include": ["omega"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "for parts", "parts", "repair", "broken", "not working", "case", "dial", "crown", "bracelet only", "box only", "papers only"]
     },
+
     {
-      "id": "ZENITH_VTG",
+      "id": "ZENITH_VTG_AUTO_ONLY",
       "brand": "Zenith",
-      "model_keywords": ["defy", "surf", "espada"],
-      "query": "Zenith Defy OR Zenith Surf OR Zenith Espada",
+      "model_keywords": ["vintage", "automatic"],
+      "query": "Zenith vintage automatic",
       "risk": "medium",
       "expected_catawiki_eur": [700, 1400],
       "max_buy_eur": 600,
-      "ebay_category_id": "31387"
+      "must_include": ["zenith", "automatic"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "crown", "corona", "dial", "cadran", "case", "cassa", "boitier", "hands", "aiguilles", "bracelet", "bracciale", "box", "scatola", "papers", "documenti", "for parts", "parts", "repair", "spares", "broken", "not working", "defect"]
     },
+
     {
-      "id": "LONGINES_VTG",
+      "id": "LONGINES_VTG_AUTO_ONLY",
       "brand": "Longines",
-      "model_keywords": ["vintage", "admiral", "flagship", "conquest"],
-      "query": "Longines Admiral OR Longines Flagship OR Longines Conquest vintage",
+      "model_keywords": ["vintage", "automatic"],
+      "query": "Longines vintage automatic",
       "risk": "medium",
       "expected_catawiki_eur": [650, 1300],
       "max_buy_eur": 550,
-      "ebay_category_id": "31387"
+      "must_include": ["longines", "automatic"],
+      "must_exclude": ["quartz", "lady", "women", "femme", "damenuhr", "crown", "corona", "dial", "cadran", "case", "cassa", "boitier", "hands", "aiguilles", "bracelet", "bracciale", "box", "scatola", "papers", "documenti", "for parts", "parts", "repair", "spares", "broken", "not working", "defect"]
     }
   ]
 }
