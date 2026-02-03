@@ -13,11 +13,12 @@ import requests
 # =========================
 
 # 🔧 MODO CALIBRACIÓN (temporal)
-# Permite ver "casi oportunidades" para ajustar targets y márgenes reales
-
 MIN_NET_EUR = float(os.getenv("MIN_NET_EUR", "-10"))
 MIN_NET_ROI = float(os.getenv("MIN_NET_ROI", "-0.05"))
 MIN_MATCH_SCORE = int(os.getenv("MIN_MATCH_SCORE", "45"))
+
+# ✅ NUEVO: control del filtro buy_max
+BUY_MAX_MULT = float(os.getenv("BUY_MAX_MULT", "10"))  # calibración: 10x, producción: 1.25–1.5
 
 ALLOW_FAKE_RISK = set(
     x.strip()
