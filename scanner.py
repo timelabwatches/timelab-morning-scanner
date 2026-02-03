@@ -130,20 +130,20 @@ GLOBAL_PARTS_TERMS = {
 }
 
 # ✅ NUEVO: rechazo duro de “incompleto / solo piezas” (aunque ponga automatic)
-INCOMPLETE_HARD_TERMS = {
-    # EN
-    "case only", "watch case", "empty case", "no movement", "without movement", "movement missing",
-    "dial only", "hands only", "bracelet only",
-    "for parts", "parts only", "spares only",
+INCOMPLETE_HARD_TERMS |= {
     # ES
-    "solo caja", "caja sola", "sin movimiento", "sin maquinaria", "sin máquina", "sin mecanismo",
-    "solo armis", "solo correa", "solo brazalete", "para piezas", "para repuestos",
+    "sin mecanismo", "falta movimiento", "falta el movimiento", "caja vacía", "caja vacia",
+    "sin maquinaria", "sin máquina", "sin maquina", "solo caja", "caja sola",
+
     # IT
-    "cassa per", "cassa originale per", "cassa in acciaio per", "solo cassa",
-    "senza movimento", "manca movimento", "solo bracciale",
-    "ricambi", "riparazione", "da riparare",
-    # FR/DE
-    "sans mouvement", "pour pièces", "zum basteln", "ohne werk"
+    "senza meccanismo", "senza meccanica", "senza macchina", "manca il movimento",
+    "movimento mancante", "solo cassa", "cassa vuota",
+
+    # FR
+    "boîtier seul", "boitier seul", "sans mecanisme", "sans mécanisme", "sans mouvement",
+
+    # DE
+    "ohne uhrwerk", "ohne werk", "gehäuse ohne", "gehaeuse ohne"
 }
 
 GLOBAL_HARD_BAD_TERMS = {
