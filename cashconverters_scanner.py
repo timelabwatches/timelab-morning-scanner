@@ -2,16 +2,12 @@ import os
 import re
 import time
 import json
-import math
 import traceback
 from typing import Dict, List, Tuple, Optional
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-# =========================
-# CONFIG (TIMELAB CC)
-# =========================
 BASE = "https://www.cashconverters.es"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -23,15 +19,12 @@ CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "100"))
 
 MIN_MATCH_SCORE = int(os.getenv("CC_MIN_MATCH_SCORE", "65"))
 MIN_NET_EUR = float(os.getenv("CC_MIN_NET_EUR", "20"))
-MIN_NET_ROI = float(os.getenv("CC_MIN_NET_ROI", "0.08"))  # 8%
+MIN_NET_ROI = float(os.getenv("CC_MIN_NET_ROI", "0.08"))
 CLOSE_HAIRCUT = float(os.getenv("CLOSE_HAIRCUT", "0.90"))
 
-# Si no detectamos envío, asumimos 0 (CashConverters suele incluir envío/recogida variable)
 DEFAULT_SHIPPING_EUR = float(os.getenv("CC_DEFAULT_SHIPPING_EUR", "0.0"))
 
-# Comisión Catawiki aprox. (para estimación neta simple)
-# Ajusta si en tu TIMELAB tienes otra fórmula exacta.
-CATWIKI_BUYER_PREMIUM = float(os.getenv("CATWIKI_BUYER_PREMIUM", "0.125"))  # 12.5%
+DEBUG_CC = os.getenv("CC_DEBUG", "1").strip() == "1"   # default ON for now
 
 PAGE_SIZE = int(os.getenv("CC_PAGE_SIZE", "24"))
 SRULE = os.getenv("CC_SRULE", "new")
@@ -43,7 +36,6 @@ HEADERS = {
     "Connection": "keep-alive",
 }
 
-# Seeds: reloj pulsera / premium / alta gama
 SEED_URLS = [
     f"{BASE}/es/es/comprar/relojes/reloj-pulsera/reloj-pulsera-caballero/",
     f"{BASE}/es/es/comprar/relojes/reloj-pulsera/reloj-pulsera-senora/",
@@ -56,10 +48,7 @@ SEED_URLS = [
     f"{BASE}/es/es/comprar/relojes/reloj-alta-gama/reloj-alta-gama-unisex/",
 ]
 
-# =========================
-# BRAND FILTERS
-# =========================
-# Lista “reputada / Catawiki-friendly” (puedes ampliarla)
+# ===== Brand policy =====
 REPUTABLE_BRANDS = {
     "rolex", "tudor", "omega", "longines", "tag heuer", "heuer", "breitling",
     "zenith", "jaeger-lecoultre", "jlc", "iwc", "panerai", "cartier",
@@ -74,7 +63,6 @@ REPUTABLE_BRANDS = {
     "raymond weil", "alpina", "laco", "stowa",
 }
 
-# Excluir explícitamente moda/baratas / smartwatches / electrónicas
 BANNED_BRANDS = {
     "lotus", "festina", "diesel", "armani", "emporio armani", "michael kors",
     "guess", "dkny", "fossil", "police", "hugo boss", "boss", "swatch",
@@ -83,17 +71,14 @@ BANNED_BRANDS = {
 }
 
 BANNED_KEYWORDS = {
-    "smartwatch", "watch", "fitness", "pulsera actividad", "activity",
-    "reloj inteligente", "galaxy watch", "apple watch",
+    "smartwatch", "reloj inteligente", "galaxy watch", "apple watch", "fitbit",
+    "pulsera actividad", "activity", "fitness",
     "sin funcionar", "no funciona", "para piezas", "solo piezas",
     "incompleto", "averiado", "defectuoso", "rotura", "no arranca",
 }
 
 POSITIVE_KEYWORDS = {"revisado", "funciona", "buen estado", "perfecto", "recien revisado", "recién revisado"}
 
-# =========================
-# PARSING UTILS
-# =========================
 PRICE_RE = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*€")
 ID_RE = re.compile(r"/segunda-mano/([^/]+)\.html")
 
@@ -105,11 +90,11 @@ def tg_send(text: str) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (GitHub Secrets?)")
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    r = requests.post(
-        url,
-        timeout=CC_TIMEOUT,
-        json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "disable_web_page_preview": True},
-    )
+    r = requests.post(url, timeout=CC_TIMEOUT, json={
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text,
+        "disable_web_page_preview": True,
+    })
     r.raise_for_status()
 
 def fetch(url: str) -> str:
@@ -124,24 +109,21 @@ def build_page_url(seed: str, start: int) -> str:
 def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
 
+def has_banned_keywords(text: str) -> bool:
+    t = normalize(text)
+    return any(k in t for k in BANNED_KEYWORDS)
+
 def brand_from_text(text: str) -> Optional[str]:
     t = normalize(text)
-    # Si contiene alguna marca reputada, devuélvela
     for b in sorted(REPUTABLE_BRANDS, key=len, reverse=True):
         if b in t:
             return b
-    # Si contiene alguna marca baneada, marcamos como baneada
     for b in sorted(BANNED_BRANDS, key=len, reverse=True):
         if b in t:
             return f"__banned__:{b}"
     return None
 
-def has_banned_keywords(text: str) -> bool:
-    t = normalize(text)
-    return any(k in t for k in BANNED_KEYWORDS)
-
 def condition_boost(cond: str) -> float:
-    # Ajuste leve del cierre por estado (conservador)
     c = normalize(cond)
     if "perfecto" in c or "muy bueno" in c:
         return 1.00
@@ -152,44 +134,25 @@ def condition_boost(cond: str) -> float:
     return 0.95
 
 def compute_match_score_simple(title: str, target: Dict) -> int:
-    """
-    Match simple y robusto:
-    - suma puntos si aparecen brand / model keywords del target
-    - penaliza si no aparece la marca
-    """
     text = normalize(title)
     score = 0
-
     t_brand = normalize(target.get("brand", ""))
     if t_brand and t_brand in text:
         score += 55
-    else:
-        score += 0
-
-    # keywords opcionales
     kws = target.get("keywords", []) or []
     for kw in kws:
         kw_n = normalize(kw)
         if kw_n and kw_n in text:
             score += 10
-
-    # cap
     return int(max(0, min(100, score)))
 
 def load_targets(path: str = "target_list.json") -> List[Dict]:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-
-    # Formatos soportados:
-    # - lista de targets
-    # - dict {targets:[...]}
     if isinstance(data, dict) and "targets" in data:
         data = data["targets"]
-
     if not isinstance(data, list):
         raise ValueError("target_list.json must be a list or {targets:[...]}")
-
-    # Normaliza esperados:
     out = []
     for t in data:
         out.append({
@@ -215,20 +178,12 @@ def estimate_close(target: Dict, cond: str) -> float:
     base = float(target.get("base_close_eur") or 0.0)
     if base <= 0:
         return 0.0
-    est = base * CLOSE_HAIRCUT * condition_boost(cond)
-    return float(est)
+    return base * CLOSE_HAIRCUT * condition_boost(cond)
 
 def estimate_net_profit(buy_price: float, shipping: float, close_est: float) -> Tuple[float, float]:
-    """
-    Estimación neta SIMPLE:
-    - close_est: martillo estimado (lo que paga comprador a Catawiki por el reloj)
-    - aproximamos que el vendedor recibe close_est (sin premium) y coste total = buy + shipping
-    - si quieres la versión exacta TIMELAB (comisiones, IVA, arbitraje envío), lo metemos en el siguiente commit
-    """
     if close_est <= 0 or buy_price <= 0:
         return -9999.0, -1.0
-
-    proceeds = close_est  # aproximación conservadora a "martillo"
+    proceeds = close_est
     cost = buy_price + shipping
     net = proceeds - cost
     roi = net / cost if cost > 0 else -1.0
@@ -258,7 +213,7 @@ def parse_detail_page(detail_html: str) -> Dict:
     price = euro_to_float(m.group(1)) if m else None
 
     lower = normalize(text)
-    estado = None
+    estado = ""
     for c in ("perfecto", "muy bueno", "bueno", "usado"):
         if c in lower:
             estado = c
@@ -266,14 +221,12 @@ def parse_detail_page(detail_html: str) -> Dict:
 
     disponibilidad = "envío" if ("a domicilio" in lower or "envio" in lower) else "tienda"
 
-    # tienda: por ahora muy básica (CashConverters incluye mucho texto)
-    tienda = None
+    tienda = ""
     for s in soup.stripped_strings:
         if "cash converters" in s.lower():
             tienda = s.strip()
             break
 
-    # descripción (si existe un bloque de texto largo)
     desc = ""
     desc_el = soup.select_one('[class*="description"], [id*="description"]')
     if desc_el:
@@ -282,37 +235,28 @@ def parse_detail_page(detail_html: str) -> Dict:
     return {
         "title": title,
         "price": price,
-        "estado": estado or "",
+        "estado": estado,
         "disponibilidad": disponibilidad,
-        "tienda": tienda or "",
-        "description": desc,
+        "tienda": tienda,
         "raw_text": text,
+        "description": desc,
     }
 
-def is_reputable_listing(title: str, raw_text: str) -> bool:
+def is_reputable_listing(title: str, raw_text: str) -> Tuple[bool, str]:
     t = normalize(title + " " + raw_text)
-
-    # keyword bans (smartwatch / piezas / no funciona)
     if has_banned_keywords(t):
-        return False
-
+        return False, "banned_keywords"
     b = brand_from_text(t)
     if b is None:
-        # Si no detectamos marca, descartamos: evita junk
-        return False
+        return False, "no_brand"
     if b.startswith("__banned__"):
-        return False
-
-    # debe estar en whitelist de reputadas
-    return True
+        return False, "banned_brand"
+    return True, "ok"
 
 def cond_label(estado: str, raw_text: str) -> str:
     t = normalize((estado or "") + " " + (raw_text or ""))
-    score = 0
     if any(k in t for k in POSITIVE_KEYWORDS):
-        score += 1
-    if any(k in t for k in BANNED_KEYWORDS):
-        score -= 2
+        return f"{estado or '—'}+"
     return f"{estado or '—'}"
 
 def run():
@@ -320,6 +264,15 @@ def run():
 
     dedup = set()
     scanned = 0
+
+    # Debug counters
+    c_brand_ok = 0
+    c_match_ok = 0
+    c_net_ok = 0
+
+    # For debug: keep best candidates even if rejected by net/roi
+    candidates = []
+
     opportunities = []
 
     for seed in SEED_URLS:
@@ -345,36 +298,26 @@ def run():
                 title = data.get("title", "")
                 raw_text = data.get("raw_text", "")
 
-                # filtro marcas reputadas + exclusiones
-                if not is_reputable_listing(title, raw_text):
-                    if scanned >= CC_MAX_ITEMS:
-                        break
+                ok_brand, why_brand = is_reputable_listing(title, raw_text)
+                if not ok_brand:
                     continue
+                c_brand_ok += 1
 
                 buy = data.get("price") or 0.0
                 shipping = DEFAULT_SHIPPING_EUR
 
-                # match con targets
                 best_target, match = pick_best_target(title, targets)
-                if not best_target or match < MIN_MATCH_SCORE:
-                    if scanned >= CC_MAX_ITEMS:
-                        break
+                if not best_target:
                     continue
 
                 close_est = estimate_close(best_target, data.get("estado", ""))
                 net, roi = estimate_net_profit(buy, shipping, close_est)
 
-                # filtros TIMELAB (net o ROI)
-                if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
-                    if scanned >= CC_MAX_ITEMS:
-                        break
-                    continue
-
-                opportunities.append({
+                # candidate snapshot for debugging
+                candidates.append({
                     "title": title,
                     "url": url,
                     "buy": buy,
-                    "shipping": shipping,
                     "close_est": close_est,
                     "net": net,
                     "roi": roi,
@@ -383,6 +326,16 @@ def run():
                     "cond": cond_label(data.get("estado", ""), raw_text),
                     "shop": data.get("tienda") or "—",
                 })
+
+                if match < MIN_MATCH_SCORE:
+                    continue
+                c_match_ok += 1
+
+                if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
+                    continue
+                c_net_ok += 1
+
+                opportunities.append(candidates[-1])
 
                 if scanned >= CC_MAX_ITEMS:
                     break
@@ -396,7 +349,6 @@ def run():
         if scanned >= CC_MAX_ITEMS:
             break
 
-    # Orden: net desc, match desc
     opportunities.sort(key=lambda x: (x["net"], x["match"]), reverse=True)
     top = opportunities[:10]
 
@@ -405,27 +357,40 @@ def run():
 
     for i, it in enumerate(top, 1):
         buy = f"{it['buy']:.2f}€"
-        ship = f"{it['shipping']:.2f}€"
         close = f"{it['close_est']:.0f}€" if it["close_est"] > 0 else "—"
         net = f"{it['net']:.0f}€"
         roi = f"{it['roi']*100:.0f}%"
         lines.append(
             f"{i}) [cc] {it['title']}\n"
-            f"   💶 Compra: {buy} | 🚚 Envío: {ship} | 🎯 Cierre est.: {close}\n"
+            f"   💶 Compra: {buy} | 🚚 Envío: {DEFAULT_SHIPPING_EUR:.2f}€ | 🎯 Cierre est.: {close}\n"
             f"   ✅ Neto est.: {net} | ROI: {roi} | Match: {it['match']} | Cond: {it['cond']}\n"
             f"   🧩 Target: {it['target']}\n"
             f"   📍 {it['shop']}\n"
             f"   🔗 {it['url']}"
         )
 
-    # Si no hay oportunidades, manda TOP 0 pero sin spam
     if not top:
-        lines.append(
-            "\nNo se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI)."
-        )
+        lines.append("\nNo se encontraron oportunidades que cumplan filtros (marca + match + net/ROI).")
 
     tg_send("\n\n".join(lines))
 
+    # DEBUG SUMMARY MESSAGE (separado)
+    if DEBUG_CC:
+        candidates.sort(key=lambda x: (x["match"], x["net"]), reverse=True)
+        cand_top = candidates[:10]
+        d = [
+            f"🧪 TIMELAB CC Debug — scanned:{scanned} | brand_ok:{c_brand_ok} | match_ok:{c_match_ok} | net_ok:{c_net_ok}",
+            f"thresholds: match>={MIN_MATCH_SCORE} | net>={MIN_NET_EUR} OR roi>={MIN_NET_ROI} | haircut:{CLOSE_HAIRCUT}",
+            "",
+            "Top candidates (even if rejected):"
+        ]
+        for i, it in enumerate(cand_top, 1):
+            d.append(
+                f"{i}) {it['title']}\n"
+                f"   buy:{it['buy']:.2f}€ close:{(it['close_est'] or 0):.0f}€ net:{it['net']:.0f}€ roi:{(it['roi']*100 if it['roi']!=-1 else -1):.0f}% match:{it['match']} target:{it['target']}\n"
+                f"   {it['url']}"
+            )
+        tg_send("\n\n".join(d))
 
 if __name__ == "__main__":
     try:
