@@ -15,7 +15,12 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 CC_TIMEOUT = float(os.getenv("CC_TIMEOUT", "20"))
 CC_THROTTLE_S = float(os.getenv("CC_THROTTLE_S", "0.8"))
-CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "120"))
+
+# Límite duro de fichas a visitar (puedes subir a 400/600 sin problema con throttle)
+CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "400"))
+
+# Objetivo de “marcas reputadas encontradas” (cuando llegamos, paramos antes)
+CC_GOOD_BRANDS_TARGET = int(os.getenv("CC_GOOD_BRANDS_TARGET", "60"))
 
 MIN_MATCH_SCORE = int(os.getenv("CC_MIN_MATCH_SCORE", "65"))
 MIN_NET_EUR = float(os.getenv("CC_MIN_NET_EUR", "20"))
@@ -113,7 +118,6 @@ def canon(s: str) -> str:
     s = re.sub(r"[-_/\.]", " ", s)
     s = re.sub(r"[^a-z0-9áéíóúñü ]+", "", s)
     s = re.sub(r"\s+", " ", s).strip()
-    # quita acentos básicos
     trans = str.maketrans("áéíóúñü", "aeiounu")
     s = s.translate(trans)
     return s
@@ -214,79 +218,20 @@ def extract_listing_urls(listing_html: str) -> List[Tuple[str, str]]:
         out.append((cc_id, url))
     return out
 
-def parse_json_ld(soup: BeautifulSoup) -> Dict:
-    """
-    Try JSON-LD: often contains Product/Offer with name & price.
-    """
-    out = {}
-    for s in soup.select('script[type="application/ld+json"]'):
-        raw = (s.string or "").strip()
-        if not raw:
-            continue
-        try:
-            data = json.loads(raw)
-        except Exception:
-            continue
-
-        # can be list or dict
-        objs = data if isinstance(data, list) else [data]
-        for obj in objs:
-            if not isinstance(obj, dict):
-                continue
-            # Product schema
-            name = obj.get("name") or ""
-            if name and "title" not in out:
-                out["title"] = name
-
-            offers = obj.get("offers")
-            if isinstance(offers, dict):
-                price = offers.get("price")
-                if price and "price" not in out:
-                    try:
-                        out["price"] = float(price)
-                    except Exception:
-                        pass
-            elif isinstance(offers, list):
-                for off in offers:
-                    if isinstance(off, dict) and off.get("price"):
-                        try:
-                            out["price"] = float(off["price"])
-                            break
-                        except Exception:
-                            pass
-    return out
-
-def page_sanity(soup: BeautifulSoup, html: str) -> bool:
-    """
-    Consider page valid if it has an h1 and a € price-like content.
-    """
-    h1 = soup.select_one("h1")
-    if not h1:
-        return False
-    if PRICE_RE.search(html) is None:
-        return False
-    return True
-
 def parse_detail_page(url: str) -> Dict:
     html, status = fetch(url)
     soup = BeautifulSoup(html, "lxml")
 
-    # Basic fields
-    title = soup.select_one("h1").get_text(" ", strip=True) if soup.select_one("h1") else ""
+    title_tag = soup.title.get_text(" ", strip=True) if soup.title else ""
+    h1 = soup.select_one("h1")
+    title = h1.get_text(" ", strip=True) if h1 else ""
+
     text = soup.get_text(" ", strip=True)
-
-    # JSON-LD fallback
-    jld = parse_json_ld(soup)
-    if not title and jld.get("title"):
-        title = jld["title"]
-
     m = PRICE_RE.search(text)
     price = euro_to_float(m.group(1)) if m else None
-    if price is None and "price" in jld:
-        price = jld.get("price")
 
-    estado = ""
     lower = canon(text)
+    estado = ""
     for c in ("perfecto", "muy bueno", "bueno", "usado"):
         if c in lower:
             estado = c
@@ -300,18 +245,17 @@ def parse_detail_page(url: str) -> Dict:
             tienda = s.strip()
             break
 
-    brand = extract_brand_from_text(title + " " + text)
+    brand = extract_brand_from_text(title + " " + title_tag + " " + text)
 
-    # sanity + debug snippet info
-    page_ok = page_sanity(soup, html)
-    page_title_tag = soup.title.get_text(" ", strip=True) if soup.title else ""
+    page_ok = bool(title) and (PRICE_RE.search(html) is not None)
+
     return {
         "url": url,
         "status": status,
         "html_len": len(html),
-        "page_title_tag": page_title_tag[:160],
+        "title_tag": title_tag[:180],
         "page_ok": page_ok,
-        "title": title,
+        "title": title or title_tag,
         "brand": brand or "",
         "price": price,
         "estado": estado,
@@ -320,21 +264,14 @@ def parse_detail_page(url: str) -> Dict:
         "raw_text": text,
     }
 
-def is_reputable_listing(data: Dict) -> Tuple[bool, str]:
-    title = data.get("title", "")
-    raw_text = data.get("raw_text", "")
-    brand = data.get("brand", "")
-
-    if has_banned_keywords(title + " " + raw_text):
-        return False, "banned_keywords"
-
+def classify_brand(brand: str) -> str:
     if not brand:
-        return False, "no_brand"
+        return "no_brand"
     if brand.startswith("__banned__"):
-        return False, "banned_brand"
-    if canon(brand) not in REPUTABLE_CANON:
-        return False, "not_reputable"
-    return True, "ok"
+        return "banned_brand"
+    if canon(brand) in REPUTABLE_CANON:
+        return "reputable"
+    return "not_reputable"
 
 def cond_label(estado: str, raw_text: str) -> str:
     t = canon((estado or "") + " " + (raw_text or ""))
@@ -348,46 +285,56 @@ def run():
     dedup = set()
     scanned = 0
 
-    c_brand_ok = 0
+    c_page_bad = 0
+    c_brand_reputable = 0
+    c_brand_banned = 0
+    c_brand_notrep = 0
+    c_brand_none = 0
     c_match_ok = 0
     c_net_ok = 0
-    c_page_bad = 0
 
-    candidates = []
     opportunities = []
-    bad_pages_samples = []
+    candidates = []
 
     for seed in SEED_URLS:
         start = 0
-        while scanned < CC_MAX_ITEMS:
+        while scanned < CC_MAX_ITEMS and c_brand_reputable < CC_GOOD_BRANDS_TARGET:
             page_url = build_page_url(seed, start)
-            listing_html, status = fetch(page_url)
+            listing_html, _ = fetch(page_url)
             pairs = extract_listing_urls(listing_html)
             if not pairs:
                 break
 
             for cc_id, url in pairs:
+                if scanned >= CC_MAX_ITEMS or c_brand_reputable >= CC_GOOD_BRANDS_TARGET:
+                    break
                 if cc_id in dedup:
                     continue
                 dedup.add(cc_id)
 
                 data = parse_detail_page(url)
-
                 scanned += 1
                 time.sleep(CC_THROTTLE_S)
 
                 if not data.get("page_ok"):
                     c_page_bad += 1
-                    if len(bad_pages_samples) < 3:
-                        bad_pages_samples.append(
-                            f"- status:{data.get('status')} len:{data.get('html_len')} titleTag:{data.get('page_title_tag')} url:{url}"
-                        )
                     continue
 
-                ok_brand, why = is_reputable_listing(data)
-                if not ok_brand:
+                if has_banned_keywords(data.get("title", "") + " " + data.get("raw_text", "")):
                     continue
-                c_brand_ok += 1
+
+                brand_class = classify_brand(data.get("brand", ""))
+                if brand_class == "reputable":
+                    c_brand_reputable += 1
+                elif brand_class == "banned_brand":
+                    c_brand_banned += 1
+                    continue
+                elif brand_class == "not_reputable":
+                    c_brand_notrep += 1
+                    continue
+                else:
+                    c_brand_none += 1
+                    continue
 
                 title = data.get("title", "")
                 raw_text = data.get("raw_text", "")
@@ -425,16 +372,10 @@ def run():
 
                 opportunities.append(cand)
 
-                if scanned >= CC_MAX_ITEMS:
-                    break
-
             start += PAGE_SIZE
             time.sleep(CC_THROTTLE_S)
 
-            if scanned >= CC_MAX_ITEMS:
-                break
-
-        if scanned >= CC_MAX_ITEMS:
+        if scanned >= CC_MAX_ITEMS or c_brand_reputable >= CC_GOOD_BRANDS_TARGET:
             break
 
     opportunities.sort(key=lambda x: (x["net"], x["match"]), reverse=True)
@@ -458,34 +399,19 @@ def run():
         )
 
     if not top:
-        lines.append("\nNo se encontraron oportunidades que cumplan filtros (marca + match + net/ROI).")
+        lines.append("\nNo se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI).")
 
     tg_send("\n\n".join(lines))
 
     if DEBUG_CC:
-        candidates.sort(key=lambda x: (x["match"], x["net"]), reverse=True)
-        cand_top = candidates[:10]
         d = [
-            f"🧪 TIMELAB CC Debug — scanned:{scanned} | page_bad:{c_page_bad} | brand_ok:{c_brand_ok} | match_ok:{c_match_ok} | net_ok:{c_net_ok}",
+            f"🧪 TIMELAB CC Debug — scanned:{scanned} | page_bad:{c_page_bad}",
+            f"brands: reputable:{c_brand_reputable} | banned:{c_brand_banned} | not_reputable:{c_brand_notrep} | no_brand:{c_brand_none}",
+            f"passed: match_ok:{c_match_ok} | net_ok:{c_net_ok}",
             f"thresholds: match>={MIN_MATCH_SCORE} | net>={MIN_NET_EUR} OR roi>={MIN_NET_ROI} | haircut:{CLOSE_HAIRCUT}",
+            f"stop: max_items:{CC_MAX_ITEMS} | good_brands_target:{CC_GOOD_BRANDS_TARGET}",
         ]
-        if bad_pages_samples:
-            d.append("")
-            d.append("Bad page samples:")
-            d.extend(bad_pages_samples)
-
-        d.append("")
-        d.append("Top candidates (even if rejected):")
-        if not cand_top:
-            d.append("(none)")
-        else:
-            for i, it in enumerate(cand_top, 1):
-                d.append(
-                    f"{i}) {it['title']}\n"
-                    f"   buy:{it['buy']:.2f}€ close:{(it['close_est'] or 0):.0f}€ net:{it['net']:.0f}€ roi:{(it['roi']*100 if it['roi']!=-1 else -1):.0f}% match:{it['match']} target:{it['target']}\n"
-                    f"   {it['url']}"
-                )
-        tg_send("\n\n".join(d))
+        tg_send("\n".join(d))
 
 if __name__ == "__main__":
     try:
