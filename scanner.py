@@ -9,15 +9,6 @@ from urllib.parse import quote
 
 import requests
 
-# ✅ NEW: state (cooldown + repost on price drop)
-from state_ebay import (
-    load_state,
-    save_state,
-    is_in_cooldown,
-    should_repost_due_to_price_drop,
-    mark_sent,
-)
-
 
 # =========================
 # CONFIG (TIMELAB)
@@ -59,10 +50,10 @@ EBAY_ALLOWED_CATEGORY_IDS = set(
 # Telegram
 TG_MAX_LEN = int(os.getenv("TG_MAX_LEN", "3500"))
 
-# ✅ NEW: anti-repeat controls (3 days + 10% price drop repost)
-EBAY_COOLDOWN_H = int(os.getenv("EBAY_COOLDOWN_H", "72"))          # 3 days
-EBAY_PRICE_REPOST_PCT = float(os.getenv("EBAY_PRICE_REPOST_PCT", "10"))  # 10%
-EBAY_STATE_PATH = os.getenv("EBAY_STATE_PATH", "state_ebay.json").strip() or "state_ebay.json"
+# ✅ Cooldown anti-repetición
+EBAY_COOLDOWN_H = int(os.getenv("EBAY_COOLDOWN_H", "72"))
+EBAY_PRICE_REPOST_PCT = float(os.getenv("EBAY_PRICE_REPOST_PCT", "10"))
+EBAY_STATE_PATH = (os.getenv("EBAY_STATE_PATH") or "state_ebay.json").strip()
 
 
 # =========================
@@ -143,7 +134,6 @@ GLOBAL_PARTS_TERMS = {
     "lot of", "bundle"
 }
 
-# ✅ FIX: definir antes de usar (sin "|=")
 INCOMPLETE_HARD_TERMS: Set[str] = {
     # ES
     "sin mecanismo", "falta movimiento", "falta el movimiento", "caja vacía", "caja vacia",
@@ -193,9 +183,6 @@ AUTO_CONTRADICTIONS = {
 def title_has_any(t: str, terms: Set[str]) -> bool:
     return any(x in t for x in terms if x)
 
-def text_is_likely_watch(t: str) -> bool:
-    return title_has_any(t, WATCH_LIKELY_TERMS)
-
 def has_incomplete_hard_terms(text: str) -> bool:
     t = norm(text)
     return any(x in t for x in INCOMPLETE_HARD_TERMS)
@@ -209,6 +196,77 @@ def global_noise_reject(text: str) -> Optional[str]:
     if title_has_any(t, GLOBAL_HARD_BAD_TERMS):
         return "hard_bad_terms"
     return None
+
+
+# =========================
+# STATE (cooldown)
+# =========================
+
+def _now_ts() -> int:
+    return int(time.time())
+
+def load_state(path: str) -> Dict:
+    if not os.path.exists(path):
+        return {"version": 1, "items": {}}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {"version": 1, "items": {}}
+        if "items" not in data or not isinstance(data["items"], dict):
+            data["items"] = {}
+        if "version" not in data:
+            data["version"] = 1
+        return data
+    except Exception:
+        return {"version": 1, "items": {}}
+
+def save_state(path: str, state: Dict) -> None:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+def state_key(item_id: str) -> str:
+    # incluye marketplace para evitar colisiones si cambias EBAY_ES/EBAY_IT etc.
+    return f"{EBAY_MARKETPLACE_ID}|{item_id}"
+
+def is_in_cooldown(item_id: str, state: Dict, cooldown_h: int) -> bool:
+    if cooldown_h <= 0:
+        return False
+    rec = state.get("items", {}).get(state_key(item_id))
+    if not isinstance(rec, dict):
+        return False
+    ts = rec.get("last_sent_ts")
+    if not isinstance(ts, int):
+        return False
+    return (_now_ts() - ts) < cooldown_h * 3600
+
+def should_repost_due_to_price_drop(item_id: str, current_price: float, state: Dict, pct: float) -> bool:
+    if pct <= 0:
+        return False
+    rec = state.get("items", {}).get(state_key(item_id))
+    if not isinstance(rec, dict):
+        return False
+    last_price = rec.get("last_price")
+    if not isinstance(last_price, (int, float)):
+        return False
+    try:
+        last_price = float(last_price)
+        cur = float(current_price)
+        if last_price <= 0:
+            return False
+        threshold = last_price * (1.0 - pct / 100.0)
+        return cur <= threshold
+    except Exception:
+        return False
+
+def mark_sent(item_id: str, price: float, state: Dict) -> None:
+    items = state.setdefault("items", {})
+    items[state_key(item_id)] = {
+        "last_sent_ts": _now_ts(),
+        "last_price": float(price),
+    }
 
 
 # =========================
@@ -394,12 +452,10 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
         else:
             kws = [brand] + [k for k in kws if k != brand]
 
-        # ✅ NUEVO: estimación conservadora global
         est = t.get("catawiki_estimate") or {}
         p50 = float(est.get("p50", 0.0) or 0.0)
         p75 = float(est.get("p75", 0.0) or 0.0)
 
-        # fallback compat
         if p50 <= 0:
             exp = t.get("expected_catawiki_eur", [0, 0])
             lo = float(exp[0]) if isinstance(exp, list) and len(exp) > 0 else 0.0
@@ -648,8 +704,12 @@ def tg_send(msg: str) -> None:
 def main():
     now = now_utc()
 
-    # ✅ NEW: load persistent state (cooldown/repost)
+    # Load cooldown state
     state = load_state(EBAY_STATE_PATH)
+    state_items = state.get("items", {})
+    if not isinstance(state_items, dict):
+        state_items = {}
+        state["items"] = state_items
 
     targets = load_targets_from_json("target_list.json")
     token = ebay_oauth_app_token()
@@ -726,6 +786,9 @@ def main():
     candidates: List[Candidate] = []
     raw_scored: List[Tuple[int, int, Listing, TargetModel, float, float]] = []
 
+    cooldown_suppressed = 0
+    reposted_price_drop = 0
+
     for li in listings:
         if not is_eu_location(li.location_text):
             continue
@@ -786,33 +849,24 @@ def main():
         if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
             continue
 
+        # ✅ COOLDOWN FILTER (late stage)
+        in_cd = is_in_cooldown(li.item_id, state, EBAY_COOLDOWN_H)
+        if in_cd:
+            # allow repost only if price drops >= threshold
+            if should_repost_due_to_price_drop(li.item_id, li.price_eur, state, EBAY_PRICE_REPOST_PCT):
+                reposted_price_drop += 1
+            else:
+                cooldown_suppressed += 1
+                continue
+
         candidates.append(Candidate(li, best_t, best_ms, cscore, expected_close, net, roi))
 
     candidates.sort(key=lambda c: (c.net_profit, c.match_score, c.condition_score), reverse=True)
+    top = candidates[:10]
 
-    # ✅ NEW: apply cooldown / repost policy (3 days, repost if -10% price)
-    candidates_all = candidates
-    candidates_send: List[Candidate] = []
-    suppressed_cooldown = 0
-    reposted_due_to_drop = 0
-
-    for c in candidates_all:
-        item_id = c.listing.item_id
-        price = c.listing.price_eur
-
-        in_cd = is_in_cooldown(item_id, state, EBAY_COOLDOWN_H)
-        if not in_cd:
-            candidates_send.append(c)
-            continue
-
-        # In cooldown: allow only if price dropped enough
-        if should_repost_due_to_price_drop(item_id, price, state, EBAY_PRICE_REPOST_PCT):
-            candidates_send.append(c)
-            reposted_due_to_drop += 1
-        else:
-            suppressed_cooldown += 1
-
-    top = candidates_send[:10]
+    # ✅ state diagnostics
+    state_exists = os.path.exists(EBAY_STATE_PATH)
+    state_count = len(state.get("items", {})) if isinstance(state.get("items", {}), dict) else 0
 
     header = [
         f"🕗 TIMELAB Morning Scan — TOP {len(top) if top else 0} (eBay API {EBAY_MARKETPLACE_ID})",
@@ -825,20 +879,18 @@ def main():
         f"DETAIL_FETCH_N: {DETAIL_FETCH_N} | details_fetched: {enriched_count}",
         f"EBAY_ALLOWED_CATEGORY_IDS: {','.join(sorted(EBAY_ALLOWED_CATEGORY_IDS))}",
         f"Cooldown: {EBAY_COOLDOWN_H}h | Repost si precio baja ≥{EBAY_PRICE_REPOST_PCT:.0f}%",
-        f"Cooldown suppressed: {suppressed_cooldown} | Reposted(price drop): {reposted_due_to_drop}",
+        f"Cooldown suppressed: {cooldown_suppressed} | Reposted(price drop): {reposted_price_drop}",
+        f"State: path={EBAY_STATE_PATH} | exists={1 if state_exists else 0} | items={state_count}",
         ""
     ]
 
     if not top:
-        # If nothing to send, show a helpful raw view of "best items (may be on cooldown)"
         raw_scored.sort(key=lambda x: (x[0], x[4], x[1]), reverse=True)
         raw_top = raw_scored[:5]
-        lines = header + ["❌ Sin oportunidades NUEVAS que pasen filtros (o todo está en cooldown).", "", "🧪 SMOKE TEST (Top RAW):", ""]
+        lines = header + ["❌ Sin oportunidades que pasen filtros.", "", "🧪 SMOKE TEST (Top RAW):", ""]
         for i, (ms, cs, li, t, net, roi) in enumerate(raw_top, 1):
-            cd = is_in_cooldown(li.item_id, state, EBAY_COOLDOWN_H)
-            cd_flag = " (cooldown)" if cd else ""
             lines.append(
-                f"{i}) [ebay]{cd_flag} {li.title}\n"
+                f"{i}) [ebay] {li.title}\n"
                 f"   💶 {li.price_eur:.0f}€ | 🚚 {li.shipping_eur:.0f}€ | Neto {net:.0f}€ | ROI {int(roi*100)}% | Match {ms} | Cond {cs}\n"
                 f"   🧩 Target: {t.key}\n"
                 f"   📍 {li.location_text}\n"
@@ -846,13 +898,18 @@ def main():
                 f"   🔗 {li.url}\n"
             )
         tg_send("\n".join(lines))
+
+        # Save state even if empty changes (harmless)
+        save_state(EBAY_STATE_PATH, state)
         return
 
     msg = header
-    sent_ids: List[Tuple[str, float]] = []
-
     for i, c in enumerate(top, 1):
         li = c.listing
+
+        # ✅ mark sent in state (so next runs are suppressed)
+        mark_sent(li.item_id, li.price_eur, state)
+
         msg.append(
             f"{i}) [ebay] {li.title}\n"
             f"   💶 Compra: {li.price_eur:.0f}€ | 🚚 Envío: {li.shipping_eur:.0f}€ | 🎯 Cierre est.: {c.expected_close:.0f}€\n"
@@ -862,18 +919,11 @@ def main():
             f"   🧾 eBay cond: {li.condition or 'n/a'} | cat: {li.category_id or 'n/a'}\n"
             f"   🔗 {li.url}\n"
         )
-        sent_ids.append((li.item_id, li.price_eur))
 
     tg_send("\n".join(msg))
 
-    # ✅ NEW: persist sent items AFTER successful send
-    try:
-        for item_id, price in sent_ids:
-            mark_sent(item_id, price, state)
-        save_state(EBAY_STATE_PATH, state)
-    except Exception:
-        # Never crash the scanner due to state persistence
-        pass
+    # ✅ save state at end of successful run
+    save_state(EBAY_STATE_PATH, state)
 
 
 if __name__ == "__main__":
