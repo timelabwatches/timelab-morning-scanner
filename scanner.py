@@ -9,6 +9,15 @@ from urllib.parse import quote
 
 import requests
 
+# ✅ NEW: state (cooldown + repost on price drop)
+from state_ebay import (
+    load_state,
+    save_state,
+    is_in_cooldown,
+    should_repost_due_to_price_drop,
+    mark_sent,
+)
+
 
 # =========================
 # CONFIG (TIMELAB)
@@ -49,6 +58,11 @@ EBAY_ALLOWED_CATEGORY_IDS = set(
 
 # Telegram
 TG_MAX_LEN = int(os.getenv("TG_MAX_LEN", "3500"))
+
+# ✅ NEW: anti-repeat controls (3 days + 10% price drop repost)
+EBAY_COOLDOWN_H = int(os.getenv("EBAY_COOLDOWN_H", "72"))          # 3 days
+EBAY_PRICE_REPOST_PCT = float(os.getenv("EBAY_PRICE_REPOST_PCT", "10"))  # 10%
+EBAY_STATE_PATH = os.getenv("EBAY_STATE_PATH", "state_ebay.json").strip() or "state_ebay.json"
 
 
 # =========================
@@ -634,6 +648,9 @@ def tg_send(msg: str) -> None:
 def main():
     now = now_utc()
 
+    # ✅ NEW: load persistent state (cooldown/repost)
+    state = load_state(EBAY_STATE_PATH)
+
     targets = load_targets_from_json("target_list.json")
     token = ebay_oauth_app_token()
 
@@ -772,7 +789,30 @@ def main():
         candidates.append(Candidate(li, best_t, best_ms, cscore, expected_close, net, roi))
 
     candidates.sort(key=lambda c: (c.net_profit, c.match_score, c.condition_score), reverse=True)
-    top = candidates[:10]
+
+    # ✅ NEW: apply cooldown / repost policy (3 days, repost if -10% price)
+    candidates_all = candidates
+    candidates_send: List[Candidate] = []
+    suppressed_cooldown = 0
+    reposted_due_to_drop = 0
+
+    for c in candidates_all:
+        item_id = c.listing.item_id
+        price = c.listing.price_eur
+
+        in_cd = is_in_cooldown(item_id, state, EBAY_COOLDOWN_H)
+        if not in_cd:
+            candidates_send.append(c)
+            continue
+
+        # In cooldown: allow only if price dropped enough
+        if should_repost_due_to_price_drop(item_id, price, state, EBAY_PRICE_REPOST_PCT):
+            candidates_send.append(c)
+            reposted_due_to_drop += 1
+        else:
+            suppressed_cooldown += 1
+
+    top = candidates_send[:10]
 
     header = [
         f"🕗 TIMELAB Morning Scan — TOP {len(top) if top else 0} (eBay API {EBAY_MARKETPLACE_ID})",
@@ -784,16 +824,21 @@ def main():
         f"EBAY_DEFAULT_CATEGORY_ID: {EBAY_DEFAULT_CATEGORY_ID}",
         f"DETAIL_FETCH_N: {DETAIL_FETCH_N} | details_fetched: {enriched_count}",
         f"EBAY_ALLOWED_CATEGORY_IDS: {','.join(sorted(EBAY_ALLOWED_CATEGORY_IDS))}",
+        f"Cooldown: {EBAY_COOLDOWN_H}h | Repost si precio baja ≥{EBAY_PRICE_REPOST_PCT:.0f}%",
+        f"Cooldown suppressed: {suppressed_cooldown} | Reposted(price drop): {reposted_due_to_drop}",
         ""
     ]
 
     if not top:
+        # If nothing to send, show a helpful raw view of "best items (may be on cooldown)"
         raw_scored.sort(key=lambda x: (x[0], x[4], x[1]), reverse=True)
         raw_top = raw_scored[:5]
-        lines = header + ["❌ Sin oportunidades que pasen filtros.", "", "🧪 SMOKE TEST (Top RAW):", ""]
+        lines = header + ["❌ Sin oportunidades NUEVAS que pasen filtros (o todo está en cooldown).", "", "🧪 SMOKE TEST (Top RAW):", ""]
         for i, (ms, cs, li, t, net, roi) in enumerate(raw_top, 1):
+            cd = is_in_cooldown(li.item_id, state, EBAY_COOLDOWN_H)
+            cd_flag = " (cooldown)" if cd else ""
             lines.append(
-                f"{i}) [ebay] {li.title}\n"
+                f"{i}) [ebay]{cd_flag} {li.title}\n"
                 f"   💶 {li.price_eur:.0f}€ | 🚚 {li.shipping_eur:.0f}€ | Neto {net:.0f}€ | ROI {int(roi*100)}% | Match {ms} | Cond {cs}\n"
                 f"   🧩 Target: {t.key}\n"
                 f"   📍 {li.location_text}\n"
@@ -804,6 +849,8 @@ def main():
         return
 
     msg = header
+    sent_ids: List[Tuple[str, float]] = []
+
     for i, c in enumerate(top, 1):
         li = c.listing
         msg.append(
@@ -815,8 +862,18 @@ def main():
             f"   🧾 eBay cond: {li.condition or 'n/a'} | cat: {li.category_id or 'n/a'}\n"
             f"   🔗 {li.url}\n"
         )
+        sent_ids.append((li.item_id, li.price_eur))
 
     tg_send("\n".join(msg))
+
+    # ✅ NEW: persist sent items AFTER successful send
+    try:
+        for item_id, price in sent_ids:
+            mark_sent(item_id, price, state)
+        save_state(EBAY_STATE_PATH, state)
+    except Exception:
+        # Never crash the scanner due to state persistence
+        pass
 
 
 if __name__ == "__main__":
