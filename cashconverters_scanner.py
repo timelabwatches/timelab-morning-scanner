@@ -27,7 +27,7 @@ DEFAULT_SHIPPING_EUR = float(os.getenv("CC_DEFAULT_SHIPPING_EUR", "0.0"))
 DEBUG_CC = os.getenv("CC_DEBUG", "1") == "1"
 
 PAGE_SIZE = int(os.getenv("CC_PAGE_SIZE", "24"))
-SRULE = os.getenv("CC_SRULE", "new")  # "new" suele ordenar por recientes
+SRULE = os.getenv("CC_SRULE", "new")
 
 SESSION = requests.Session()
 
@@ -39,14 +39,12 @@ HEADERS = {
     "Pragma": "no-cache",
 }
 
-# Semillas amplias (relojes pulsera / premium / alta gama)
 SEED_URLS = [
     f"{BASE}/es/es/comprar/relojes/reloj-pulsera/",
     f"{BASE}/es/es/comprar/relojes/reloj-pulsera-premium/",
     f"{BASE}/es/es/comprar/relojes/reloj-alta-gama/",
 ]
 
-# Reputable para Catawiki (ajústalo si quieres más estricto)
 REPUTABLE_BRANDS = {
     "rolex","tudor","omega","longines","tag heuer","breitling","zenith",
     "jaeger lecoultre","iwc","panerai","cartier","bulgari","chopard",
@@ -58,17 +56,14 @@ REPUTABLE_BRANDS = {
     "maurice lacroix","raymond weil","alpina",
 }
 
-# Banned: moda / smart / típicas no aceptables para tu pipeline
 BANNED_BRANDS = {
     "lotus","festina","diesel","armani","emporio armani","fossil","guess","dkny",
     "tommy hilfiger","calvin klein","police","boss","hugo boss",
     "welder","ice watch","icewatch",
     "samsung","xiaomi","apple","garmin","fitbit","huawei",
-    # Casio: tú lo estabas rechazando. Si algún día quieres G-Shock vintage, lo sacas de aquí.
     "casio",
 }
 
-# Keywords negativos fuertes (aplícalos SOLO al título)
 BANNED_KEYWORDS_TITLE = {
     "smartwatch","reloj inteligente","pulsera actividad","fitness",
     "apple watch","galaxy watch","fitbit","garmin",
@@ -115,11 +110,7 @@ def build_page_url(seed: str, start: int) -> str:
     return f"{seed}{joiner}srule={SRULE}&start={start}&sz={PAGE_SIZE}"
 
 def detect_brand_from_text(text: str) -> Tuple[str, str]:
-    """
-    Devuelve (brand, class): class ∈ {'reputable','banned','no_brand'}
-    """
     t = canon(text)
-    # primero reputable (para no confundir coincidencias)
     for b in sorted(REPUTABLE_CANON, key=len, reverse=True):
         if b and b in t:
             return b, "reputable"
@@ -144,7 +135,6 @@ def extract_listing_urls(listing_html: str) -> List[Tuple[str, str]]:
         m = ID_RE.search(url)
         cc_id = m.group(1) if m else url
         out.append((cc_id, url))
-    # dedup preservando orden
     seen = set()
     uniq = []
     for cc_id, url in out:
@@ -167,7 +157,6 @@ def parse_detail_page(url: str) -> Dict[str, Any]:
 
     page_ok = bool(title) and (price is not None)
 
-    # tienda (string útil, no crítico)
     shop = ""
     for s in soup.stripped_strings:
         if "cash converters" in s.lower():
@@ -183,67 +172,127 @@ def parse_detail_page(url: str) -> Dict[str, Any]:
         "page_ok": page_ok
     }
 
-def load_targets(path: str = "target_list.json") -> List[Dict[str, Any]]:
+def _to_float(v: Any) -> float:
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        vv = v.strip()
+        # permite "650", "650.0", "650,00"
+        vv = vv.replace("€", "").strip()
+        vv = vv.replace(".", "").replace(",", ".")
+        try:
+            return float(vv)
+        except Exception:
+            return 0.0
+    return 0.0
+
+def _pick_first(d: Dict[str, Any], keys: List[str]) -> Any:
+    for k in keys:
+        if k in d and d[k] is not None:
+            return d[k]
+    return None
+
+def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], str]:
     """
-    Soporta:
-    - [ {...}, {...} ]
-    - { "targets": [ {...}, {...} ] }
-    Normaliza keys: id, brand, base_close_eur, keywords, fake_risk
+    Devuelve (targets, diag_text).
+    Soporta múltiples formatos:
+      - [ {...}, {...} ]
+      - { "targets": [ {...} ] }
+      - { "TISSOT_PRX_AUTO": {...}, "OMEGA_SEAMASTER": {...} }  (mapa)
+    Soporta claves alternativas para base close:
+      base_close_eur, base_close, baseClose, close, close_eur, catawiki_close, catawiki_close_eur, base
+    Soporta brand en:
+      brand, make, manufacturer
+    Soporta id en:
+      id, target, name, key (si venía como dict-map)
     """
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    if isinstance(data, dict) and "targets" in data:
-        data = data["targets"]
+    diag_parts = [f"type:{type(data).__name__}"]
 
-    if not isinstance(data, list):
-        raise ValueError("target_list.json must be a list or {targets:[...]}")
+    items: List[Any] = []
+    if isinstance(data, dict):
+        if "targets" in data and isinstance(data["targets"], list):
+            items = data["targets"]
+            diag_parts.append("shape:{targets:[...]}")
+        else:
+            # dict-map: id -> obj
+            items = []
+            for k, v in data.items():
+                if isinstance(v, dict):
+                    vv = dict(v)
+                    vv["_key_from_map"] = k
+                    items.append(vv)
+            diag_parts.append("shape:{id:{...}}")
+    elif isinstance(data, list):
+        items = data
+        diag_parts.append("shape:[...]")
+    else:
+        return [], " | ".join(diag_parts) + " | unsupported"
 
-    targets: List[Dict[str, Any]] = []
-    for item in data:
-        if not isinstance(item, dict):
-            # ignora entradas raras (strings, etc.)
+    valid: List[Dict[str, Any]] = []
+    sample_keys = set()
+
+    for it in items:
+        if not isinstance(it, dict):
             continue
 
-        tid = item.get("id") or item.get("target") or item.get("name") or ""
-        brand = item.get("brand") or ""
-        base = item.get("base_close_eur")
-        if base is None:
-            base = item.get("base_close")
-        if base is None:
-            base = item.get("base_close_est")
-        try:
-            base = float(base) if base is not None else 0.0
-        except Exception:
-            base = 0.0
+        for k in it.keys():
+            sample_keys.add(str(k))
 
-        keywords = item.get("keywords") or []
+        tid = _pick_first(it, ["id", "target", "name"])
+        if not tid:
+            tid = it.get("_key_from_map", "")
+        tid = str(tid).strip()
+
+        brand = _pick_first(it, ["brand", "make", "manufacturer"])
+        brand = str(brand).strip() if brand else ""
+
+        base_raw = _pick_first(it, [
+            "base_close_eur", "base_close", "baseClose",
+            "close", "close_eur",
+            "catawiki_close", "catawiki_close_eur",
+            "base", "baseCloseEur"
+        ])
+        base = _to_float(base_raw)
+
+        keywords = it.get("keywords") or it.get("kw") or it.get("tags") or []
         if isinstance(keywords, str):
             keywords = [keywords]
         if not isinstance(keywords, list):
             keywords = []
 
-        fake_risk = (item.get("fake_risk") or "low").lower()
+        fake_risk = (it.get("fake_risk") or it.get("risk") or "low")
+        fake_risk = str(fake_risk).lower()
 
-        targets.append({
-            "id": str(tid) if tid else "",
-            "brand": str(brand),
-            "base_close_eur": float(base),
-            "keywords": keywords,
-            "fake_risk": fake_risk,
-        })
+        # VALIDACIÓN mínima (más laxa, pero útil)
+        # - id requerido
+        # - brand requerido
+        # - base_close > 0 requerido (si no, no podemos estimar net)
+        if tid and brand and base > 0:
+            valid.append({
+                "id": tid,
+                "brand": brand,
+                "base_close_eur": base,
+                "keywords": keywords,
+                "fake_risk": fake_risk,
+            })
 
-    # deja solo targets mínimamente válidos
-    targets = [t for t in targets if t["id"] and t["brand"] and t["base_close_eur"] > 0]
-    if not targets:
-        raise ValueError("No valid targets loaded from target_list.json")
-    return targets
+    diag_parts.append(f"items:{len(items)}")
+    diag_parts.append(f"valid:{len(valid)}")
+    if sample_keys:
+        ks = sorted(list(sample_keys))[:25]
+        diag_parts.append("keys_sample:" + ",".join(ks))
+
+    return valid, " | ".join(diag_parts)
 
 def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], int]:
     t = canon(title)
     best = None
     best_score = -1
-
     for trg in targets:
         score = 0
         brand = canon(trg.get("brand", ""))
@@ -253,11 +302,9 @@ def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dic
             kwc = canon(str(kw))
             if kwc and kwc in t:
                 score += 10
-
         if score > best_score:
             best_score = score
             best = trg
-
     return best, max(0, best_score)
 
 def estimate_close(trg: Dict[str, Any]) -> float:
@@ -275,7 +322,16 @@ def estimate_net(buy: float, shipping: float, close: float) -> Tuple[float, floa
     return net, roi
 
 def run() -> None:
-    targets = load_targets("target_list.json")
+    targets, diag = load_targets("target_list.json")
+
+    # ✅ NO CRASH: si targets inválidos, avisamos por Telegram y salimos limpio
+    if not targets:
+        tg_send(
+            "❌ TIMELAB CashConverters scanner: target_list.json inválido (no se pudieron cargar targets válidos)\n\n"
+            f"diag: {diag}\n\n"
+            "Acción: revisa el formato o pásame una captura/pegado del inicio de target_list.json (primeros 30-50 lines) y lo adapto."
+        )
+        return
 
     seen = set()
     scanned = 0
@@ -318,9 +374,7 @@ def run() -> None:
                 text = data.get("text", "")
                 buy = float(data.get("price") or 0.0)
 
-                # 1) Marca: SOLO desde title+text (NO breadcrumbs)
                 brand, cls = detect_brand_from_text(title + " " + text)
-
                 if cls == "banned":
                     c_ban += 1
                     continue
@@ -329,11 +383,9 @@ def run() -> None:
                     continue
                 c_rep += 1
 
-                # 2) Keywords negativos SOLO en título
                 if title_has_banned_keywords(title):
                     continue
 
-                # 3) Target/match
                 trg, match = best_target(title, targets)
                 if not trg or match < MIN_MATCH_SCORE:
                     continue
@@ -342,7 +394,6 @@ def run() -> None:
                 close_est = estimate_close(trg)
                 net, roi = estimate_net(buy, DEFAULT_SHIPPING_EUR, close_est)
 
-                # 4) net/roi
                 if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
                     continue
                 c_net_ok += 1
@@ -393,7 +444,8 @@ def run() -> None:
             f"brands: reputable:{c_rep} | banned:{c_ban} | no_brand:{c_nb}\n"
             f"passed: match_ok:{c_match_ok} | net_ok:{c_net_ok}\n"
             f"thresholds: match>={MIN_MATCH_SCORE} | net>={MIN_NET_EUR} OR roi>={MIN_NET_ROI} | haircut:{CLOSE_HAIRCUT}\n"
-            f"stop: max_items:{CC_MAX_ITEMS} | good_brands_target:{CC_GOOD_BRANDS_TARGET}"
+            f"stop: max_items:{CC_MAX_ITEMS} | good_brands_target:{CC_GOOD_BRANDS_TARGET}\n"
+            f"targets: {diag}"
         )
         tg_send(dbg)
 
