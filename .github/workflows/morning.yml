@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "30 7 * * *"   # 07:30 UTC
 
+permissions:
+  contents: write
+
 jobs:
   run-ebay-scanner:
     runs-on: ubuntu-latest
@@ -12,6 +15,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -21,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml
+          pip install requests
 
       - name: Run eBay scanner (scanner.py)
         continue-on-error: true
@@ -30,8 +36,31 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+
+          # ✅ anti-repetición
+          EBAY_COOLDOWN_H: "72"
+          EBAY_PRICE_REPOST_PCT: "10"
+          EBAY_STATE_PATH: "state_ebay.json"
         run: |
           python scanner.py
+
+      - name: Commit eBay state (state_ebay.json)
+        if: always()
+        run: |
+          set -e
+          if [ -f "state_ebay.json" ]; then
+            git config user.name "timelab-bot"
+            git config user.email "timelab-bot@users.noreply.github.com"
+            git add state_ebay.json || true
+
+            # Solo commit si hay cambios reales
+            if ! git diff --cached --quiet; then
+              git commit -m "Update eBay state" || true
+              git push || true
+            fi
+          else
+            echo "No state_ebay.json found; nothing to commit."
+          fi
 
   run-cashconverters-scanner:
     runs-on: ubuntu-latest
@@ -55,21 +84,14 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-          # ---- CashConverters tuning ----
           CC_MAX_ITEMS: "500"
-          CC_GOOD_BRANDS_TARGET: "60"
           CC_TIMEOUT: "20"
-          CC_THROTTLE_S: "0.8"
-
-          # 🔥 CLAVE: bajar match para CC (títulos pobres)
+          CC_THROTTLE_S: "0.7"
           CC_MIN_MATCH_SCORE: "55"
-
           CC_MIN_NET_EUR: "20"
           CC_MIN_NET_ROI: "0.08"
           CLOSE_HAIRCUT: "0.90"
-
-          # Debug ON (para ver contadores)
+          CC_GOOD_BRANDS_TARGET: "60"
           CC_DEBUG: "1"
         run: |
           python cashconverters_scanner.py
