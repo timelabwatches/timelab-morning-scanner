@@ -1,637 +1,832 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+TIMELAB — CashConverters ES scanner (requests + BeautifulSoup)
+- Scans wristwatches on cashconverters.es
+- Matches against target_list.json (same philosophy as eBay scanner)
+- Computes conservative Catawiki close estimate via target_list + CLOSE_HAIRCUT
+- Filters: reputable brands + match threshold + net/ROI threshold + fake risk allowed
+- Sends a SEPARATE Telegram message (same channel) with header:
+  "🕗 TIMELAB Morning Scan — TOP X (CashConverters ES)"
+
+Env vars (GitHub Actions step env):
+  TELEGRAM_BOT_TOKEN (required)
+  TELEGRAM_CHAT_ID (required)
+
+  CC_MAX_ITEMS (default 100)             # how many listing URLs to scan (dedup by URL)
+  CC_PAGE_SIZE (default 60)              # CashConverters listing page size (sz=)
+  CC_MAX_PAGES (default 50)              # safety cap
+  CC_TIMEOUT (default 20)                # requests timeout
+  CC_THROTTLE_S (default 0.8)            # polite sleep between requests
+  CC_DEBUG (default 0)                   # send debug message to Telegram
+  CC_VERIFY_MODE (default 0)             # if 1: also show top candidates even if rejected (debug-only)
+
+  CC_MIN_MATCH_SCORE (default 65)
+  CC_MIN_NET_EUR (default 20)
+  CC_MIN_NET_ROI (default 0.08)
+  CLOSE_HAIRCUT (default 0.90)
+
+  CC_GOOD_BRANDS_TARGET (default 60)     # stop early after seeing N reputable-brand items (optional)
+  CC_ALLOW_FAKE_RISK (default "low,medium")
+
+Fees (approx; adjust if needed):
+  CATWIKI_COMMISSION_RATE (default 0.125)
+  CATWIKI_COMMISSION_VAT (default 0.21)
+"""
+
+import json
 import os
 import re
-import json
 import time
-import math
-import random
-from typing import Dict, Any, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from bs4 import BeautifulSoup
 
 
-# =========================
-# ENV / CONFIG
-# =========================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+# -----------------------------
+# CONFIG / DEFAULTS
+# -----------------------------
+BASE_LISTING_URL = "https://www.cashconverters.es/es/es/comprar/relojes/?cgid=1471"
+# We will paginate with sz/start explicitly.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
 
-CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "100"))
-CC_TIMEOUT = float(os.getenv("CC_TIMEOUT", "20"))
-CC_THROTTLE_S = float(os.getenv("CC_THROTTLE_S", "0.8"))
+BANNED_BRANDS = {
+    # fashion / generic / smartwatch-ish (tune as you wish)
+    "lotus", "festina", "calvin klein", "ck", "diesel", "armani", "emporio armani",
+    "michael kors", "guess", "tommy", "tommy hilfiger", "fossil", "dkny", "police",
+    "welder", "welder k", "samsung", "huawei", "xiaomi", "garmin", "fitbit", "amazfit",
+    "skagen", "swatch", "ice watch", "ice", "sector", "viceroy", "casio",
+    # casio is “reputable” as a brand, but you asked “marcas tradicionales de relojería” for Catawiki,
+    # and to avoid these generic mid/low-tier items. If you want Casio G-Shock exceptions, tell me.
+}
 
-CC_MIN_MATCH_SCORE = int(os.getenv("CC_MIN_MATCH_SCORE", "65"))
-CC_MIN_NET_EUR = float(os.getenv("CC_MIN_NET_EUR", "20"))
-CC_MIN_NET_ROI = float(os.getenv("CC_MIN_NET_ROI", "0.08"))
+REPUTABLE_BRANDS = {
+    # Keep this aligned with “Catawiki accepts systematically” + your preferences
+    "omega", "longines", "tag heuer", "tag", "heuer", "tissot", "seiko", "hamilton",
+    "oris", "zenith", "baume", "baume & mercier", "baume mercier", "frederique constant",
+    "raymond weil", "sinn", "junghans", "certina", "tudor", "breitling", "rolex",
+    "jaeger", "jaeger lecoultre", "iwc", "cartier", "panerai",
+    # Add more if you want
+}
 
-CLOSE_HAIRCUT = float(os.getenv("CLOSE_HAIRCUT", "0.90"))
+# Negative condition keywords (multi-language-ish)
+BAD_COND_TERMS = [
+    "para piezas", "por piezas", "solo piezas", "sin funcionar", "no funciona", "averiado",
+    "defectuoso", "incompleto", "reparar", "para reparar", "da riparare", "non funziona",
+    "for parts", "spares", "parts", "repair", "broken",
+]
 
-CC_DEBUG = os.getenv("CC_DEBUG", "0").strip() == "1"
-CC_GOOD_BRANDS_TARGET = int(os.getenv("CC_GOOD_BRANDS_TARGET", "60"))
+GOOD_COND_TERMS = [
+    "revisado", "revisada", "servicio", "serviced", "funciona", "working", "perfecto",
+    "excelente", "muy buen estado", "buen estado", "como nuevo",
+]
 
-# “verify mode”: baja umbrales para comprobar que hay matches
-CC_VERIFY_MODE = os.getenv("CC_VERIFY_MODE", "0").strip() == "1"
-if CC_VERIFY_MODE:
-    CC_MIN_MATCH_SCORE = min(CC_MIN_MATCH_SCORE, 55)
-
-# Catawiki fee assumptions (conservative)
-CATWIKI_COMMISSION_RATE = 0.125  # 12.5%
-CATWIKI_COMMISSION_MIN = 3.0     # €
-CATWIKI_VAT_ON_COMMISSION = 0.21 # Spain VAT on fee (approx)
-
-# CashConverters shipping: many items show envío, but cost isn’t always clear.
-# We keep it conservative: assume 0 unless parsed; allow override
-CC_DEFAULT_SHIP_EUR = float(os.getenv("CC_DEFAULT_SHIP_EUR", "0.0"))
-
-# Brand policy
-BANNED_BRANDS = set(map(str.lower, [
-    # fashion / generic / low acceptance in CW for our arbitrage
-    "lotus", "festina", "viceroy", "diesel", "armani", "emporio armani",
-    "michael kors", "guess", "skagen", "fossil", "police", "tommy hilfiger",
-    "calvin klein", "dkny", "hugo boss", "boss", "lacoste", "swatch",
-    "welder", "smartwatch", "samsung", "xiaomi", "huawei", "amazfit", "fitbit",
-]))
-
-# If you want to allow Casio/Citizen sometimes, do NOT ban them.
-# You can still gate them via target_list (only match if target exists).
-# Here we do NOT ban casio/citizen by default.
-REPUTABLE_FALLBACK = set(map(str.lower, [
-    # We treat these as “reputable” globally (CW generally accepts)
-    "omega", "longines", "tissot", "tag heuer", "tag", "heuer", "hamilton",
-    "certina", "seiko", "oris", "zenith", "junghans", "baume", "mercier",
-    "frederique constant", "raymond weil", "sinn"
-]))
+# Fees (can be overridden by env if you want)
+CATWIKI_COMMISSION_RATE = float(os.getenv("CATWIKI_COMMISSION_RATE", "0.125"))
+CATWIKI_COMMISSION_VAT = float(os.getenv("CATWIKI_COMMISSION_VAT", "0.21"))
 
 
-# =========================
-# UTILS
-# =========================
-def tg_send(text: str) -> None:
+def env_int(name: str, default: int) -> int:
+    try:
+        return int(str(os.getenv(name, str(default))).strip())
+    except Exception:
+        return default
+
+
+def env_float(name: str, default: float) -> float:
+    try:
+        return float(str(os.getenv(name, str(default))).strip().replace(",", "."))
+    except Exception:
+        return default
+
+
+def env_str(name: str, default: str) -> str:
+    v = os.getenv(name)
+    return default if v is None else str(v)
+
+
+TELEGRAM_BOT_TOKEN = env_str("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = env_str("TELEGRAM_CHAT_ID", "").strip()
+
+CC_MAX_ITEMS = env_int("CC_MAX_ITEMS", 100)
+CC_PAGE_SIZE = env_int("CC_PAGE_SIZE", 60)
+CC_MAX_PAGES = env_int("CC_MAX_PAGES", 50)
+CC_TIMEOUT = env_int("CC_TIMEOUT", 20)
+CC_THROTTLE_S = env_float("CC_THROTTLE_S", 0.8)
+CC_DEBUG = env_int("CC_DEBUG", 0) == 1
+CC_VERIFY_MODE = env_int("CC_VERIFY_MODE", 0) == 1
+
+CC_MIN_MATCH_SCORE = env_int("CC_MIN_MATCH_SCORE", 65)
+CC_MIN_NET_EUR = env_float("CC_MIN_NET_EUR", 20.0)
+CC_MIN_NET_ROI = env_float("CC_MIN_NET_ROI", 0.08)
+CLOSE_HAIRCUT = env_float("CLOSE_HAIRCUT", 0.90)
+
+CC_GOOD_BRANDS_TARGET = env_int("CC_GOOD_BRANDS_TARGET", 60)
+
+ALLOW_FAKE_RISK = {s.strip().lower() for s in env_str("CC_ALLOW_FAKE_RISK", "low,medium").split(",") if s.strip()}
+
+
+@dataclass
+class Listing:
+    title: str
+    price_eur: float
+    url: str
+    store: str
+    cond: str
+    availability: str
+
+
+# -----------------------------
+# TELEGRAM
+# -----------------------------
+def telegram_send(text: str) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("WARN: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing. Printing message:\n", text)
+        # Nothing we can do. Avoid crashing.
         return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "disable_web_page_preview": True
-    }
-    requests.post(url, json=payload, timeout=15)
+    # Telegram message length hard-ish limit ~4096
+    chunks = chunk_text(text, 3800)
+    for chunk in chunks:
+        try:
+            requests.post(
+                url,
+                json={
+                    "chat_id": TELEGRAM_CHAT_ID,
+                    "text": chunk,
+                    "disable_web_page_preview": True,
+                },
+                timeout=20,
+            )
+        except Exception:
+            pass
 
 
-def canon(s: str) -> str:
-    s = (s or "").strip().lower()
-    # normalize accents basic
-    s = s.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n")
-    # normalize separators
-    s = re.sub(r"[\s\-/_,;:|]+", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
+def chunk_text(text: str, max_len: int) -> List[str]:
+    if len(text) <= max_len:
+        return [text]
+    out = []
+    cur = []
+    cur_len = 0
+    for line in text.splitlines(True):
+        if cur_len + len(line) > max_len and cur:
+            out.append("".join(cur))
+            cur = []
+            cur_len = 0
+        cur.append(line)
+        cur_len += len(line)
+    if cur:
+        out.append("".join(cur))
+    return out
 
-    # IMPORTANT: normalize common watch tokens in CC titles
-    s = s.replace("powermatic80", "powermatic 80")
-    s = s.replace("powermatic 80", "powermatic 80")
-    s = s.replace(" p80 ", " powermatic 80 ")
-    s = s.replace("deville", "de ville")
-    s = s.replace("formula1", "formula 1")
 
+# -----------------------------
+# HTTP / PARSING
+# -----------------------------
+def make_session() -> requests.Session:
+    s = requests.Session()
+    s.headers.update(
+        {
+            "User-Agent": env_str("CC_USER_AGENT", DEFAULT_USER_AGENT),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.7",
+            "Connection": "keep-alive",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+    )
     return s
 
 
-def safe_float_price(txt: str) -> Optional[float]:
-    if not txt:
+def polite_sleep(seconds: float) -> None:
+    if seconds and seconds > 0:
+        time.sleep(seconds)
+
+
+def fetch(url: str, session: requests.Session) -> Optional[requests.Response]:
+    # gentle retry
+    for attempt in range(2):
+        try:
+            r = session.get(url, timeout=CC_TIMEOUT)
+            return r
+        except Exception:
+            if attempt == 0:
+                polite_sleep(CC_THROTTLE_S)
+            continue
+    return None
+
+
+def canon(s: str) -> str:
+    s = s or ""
+    s = s.lower().strip()
+    s = s.replace("\u00a0", " ")
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def parse_price(text: str) -> Optional[float]:
+    if not text:
         return None
-    t = txt.strip()
-    t = t.replace(".", "").replace("€", "").replace("eur", "").strip()
+    t = text.strip()
+    t = t.replace(".", "").replace("€", "").replace("EUR", "").strip()
     t = t.replace(",", ".")
     m = re.search(r"(\d+(?:\.\d+)?)", t)
     if not m:
         return None
     try:
         return float(m.group(1))
-    except:
+    except Exception:
         return None
 
 
-def polite_sleep(base: float) -> None:
-    # jitter to reduce pattern
-    time.sleep(base + random.uniform(0.05, 0.20))
-
-
-# =========================
-# TARGETS
-# =========================
-def load_targets(path: str) -> List[Dict[str, Any]]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Accept either list or dict{targets:[...]}
-    if isinstance(data, list):
-        targets = data
-        diag = f"type:list | items:{len(targets)}"
-    elif isinstance(data, dict) and isinstance(data.get("targets"), list):
-        targets = data["targets"]
-        diag = f"type:dict | shape:{{targets:[...]}} | items:{len(targets)}"
-    else:
-        raise ValueError("target_list.json invalid shape. Expected list OR {targets:[...]}")
-
-    valid = []
-    for t in targets:
-        if not isinstance(t, dict):
-            continue
-        if not t.get("id") or not t.get("brand") or not t.get("catawiki_estimate"):
-            continue
-        # catawiki_estimate must have p50
-        ce = t.get("catawiki_estimate")
-        if not isinstance(ce, dict) or "p50" not in ce:
-            continue
-        # normalize arrays
-        t["model_keywords"] = t.get("model_keywords") or []
-        t["must_include"] = t.get("must_include") or []
-        t["must_exclude"] = t.get("must_exclude") or []
-        valid.append(t)
-
-    if not valid:
-        keys_sample = ""
-        if targets and isinstance(targets[0], dict):
-            keys_sample = ",".join(list(targets[0].keys())[:20])
-        raise ValueError(
-            f"No valid targets loaded from target_list.json | diag:{diag} | items:{len(targets)} | valid:0 | keys_sample:{keys_sample}"
-        )
-    return valid
-
-
-def detect_brand(title: str, targets: List[Dict[str, Any]]) -> Optional[str]:
-    t = canon(title)
-    # direct from targets brands first
-    brands = sorted({canon(x.get("brand", "")) for x in targets if x.get("brand")}, key=len, reverse=True)
-    for b in brands:
-        if not b:
-            continue
-        if b in t:
-            return b
-    # fallback
-    for b in REPUTABLE_FALLBACK:
-        if b in t:
-            return b
-    return None
-
-
-def is_banned_brand(title: str) -> bool:
-    t = canon(title)
-    for b in BANNED_BRANDS:
-        if b in t:
-            return True
-    return False
-
-
-def contains_any(text: str, words: List[str]) -> bool:
-    t = canon(text)
-    for w in words:
-        if canon(w) and canon(w) in t:
-            return True
-    return False
-
-
-def contains_all(text: str, words: List[str]) -> bool:
-    t = canon(text)
-    for w in words:
-        ww = canon(w)
-        if ww and ww not in t:
-            return False
-    return True
-
-
-def compute_match_score(title: str, trg: Dict[str, Any]) -> int:
+def extract_product_urls(html: str) -> List[str]:
     """
-    Conservative but not overly strict:
-    - brand presence is mandatory (handled by best_target)
-    - model_keywords add points
-    - must_include adds points but missing does NOT nuke to 0 (CashConverters titles are messy)
-    - must_exclude is a hard fail
+    Listing pages usually contain links like:
+      /es/es/segunda-mano/CC090_E259523_0.html
+    We'll harvest all unique product URLs.
     """
-    t = canon(title)
-
-    # hard excludes
-    if contains_any(t, trg.get("must_exclude", [])):
-        return 0
-
-    score = 0
-
-    # brand already required in best_target, but we still reward it
-    b = canon(trg.get("brand", ""))
-    if b and b in t:
-        score += 25
-
-    # model keywords (soft)
-    hits = 0
-    for kw in trg.get("model_keywords", []):
-        k = canon(kw)
-        if k and k in t:
-            hits += 1
-
-    # Scale hits to points
-    # 0 hits -> 0, 1 hit -> +10, 2 hits -> +20, 3+ hits -> +30
-    if hits == 1:
-        score += 10
-    elif hits == 2:
-        score += 20
-    elif hits >= 3:
-        score += 30
-
-    # must_include: reward presence, small penalty if missing
-    includes = trg.get("must_include", [])
-    inc_hits = 0
-    for inc in includes:
-        ii = canon(inc)
-        if ii and ii in t:
-            inc_hits += 1
-
-    if includes:
-        # if all present: +25
-        if inc_hits == len(includes):
-            score += 25
-        else:
-            # partial: + (10..20), small penalty for missing
-            score += min(20, 10 + inc_hits * 5)
-            score -= min(10, (len(includes) - inc_hits) * 3)
-
-    # clamp
-    score = max(0, min(100, score))
-    return int(score)
-
-
-def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], int]:
-    t = canon(title)
-
-    best = None
-    best_score = 0
-
-    for trg in targets:
-        b = canon(trg.get("brand", ""))
-        if not b:
-            continue
-
-        # Brand must appear somewhere (strict)
-        if b not in t:
-            continue
-
-        s = compute_match_score(t, trg)
-        if s > best_score:
-            best = trg
-            best_score = s
-
-    return best, best_score
-
-
-# =========================
-# CASHCONVERTERS SCRAPE
-# =========================
-BASE = "https://www.cashconverters.es"
-# This path may vary; we use the same “relojes” route most CC pages share
-START_URL = "https://www.cashconverters.es/es/es/comprar/relojes/"
-
-
-def fetch(url: str, session: requests.Session) -> Optional[requests.Response]:
-    headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-        "Accept-Language": "es-ES,es;q=0.9,en;q=0.7",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Connection": "keep-alive",
-    }
-    try:
-        r = session.get(url, headers=headers, timeout=CC_TIMEOUT)
-        return r
-    except Exception as e:
-        if CC_DEBUG:
-            print("fetch error:", url, e)
-        return None
-
-
-def parse_listing_cards(html: str) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, "lxml")
-    out = []
+    urls: List[str] = []
 
-    # CashConverters usually renders product tiles with <a href="/.../segunda-mano/CCxxx_....html">
-    # We'll extract any <a> that looks like product detail.
-    for a in soup.select("a[href]"):
-        href = a.get("href", "")
+    # 1) direct anchors to /segunda-mano/...
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
         if not href:
             continue
-        if "/segunda-mano/" not in href:
-            continue
-        if not href.endswith(".html"):
-            continue
+        if "/segunda-mano/" in href and href.endswith(".html"):
+            full = href
+            if full.startswith("/"):
+                full = "https://www.cashconverters.es" + full
+            if full.startswith("https://www.cashconverters.es/es/es/segunda-mano/"):
+                urls.append(full)
 
-        url = href if href.startswith("http") else BASE + href
+    # 2) fallback regex
+    if not urls:
+        rx = re.findall(r'(https://www\.cashconverters\.es/es/es/segunda-mano/[^"\']+?\.html)', html)
+        urls.extend(rx)
 
-        # Try to find title around card
-        title = a.get_text(" ", strip=True)
-        title = title if title else ""
-
-        # price nearby
-        price = None
-        # check parent containers
-        parent = a.parent
-        for _ in range(0, 4):
-            if not parent:
-                break
-            txt = parent.get_text(" ", strip=True)
-            if "€" in txt:
-                # take the first price-like
-                m = re.search(r"(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)\s*€", txt)
-                if m:
-                    price = safe_float_price(m.group(1) + "€")
-                    break
-            parent = parent.parent
-
-        # Avoid duplicates; store raw and refine later by fetching detail
-        out.append({
-            "url": url,
-            "title": title,
-            "price": price
-        })
-
-    # De-dup by URL preserving order
+    # Dedup preserving order
     seen = set()
-    uniq = []
-    for x in out:
-        if x["url"] in seen:
-            continue
-        seen.add(x["url"])
-        uniq.append(x)
-    return uniq
+    out = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
 
 
-def parse_detail(html: str) -> Dict[str, Any]:
+def parse_detail_page(html: str, url: str) -> Listing:
     soup = BeautifulSoup(html, "lxml")
 
     # Title
-    h1 = soup.select_one("h1")
-    title = h1.get_text(" ", strip=True) if h1 else ""
+    title = ""
+    h1 = soup.find("h1")
+    if h1 and h1.get_text(strip=True):
+        title = h1.get_text(" ", strip=True)
+    if not title:
+        # fallback to <title>
+        title = (soup.title.get_text(" ", strip=True) if soup.title else "") or ""
+    title = canon(title)
 
-    # Price: try common selectors, then regex fallback
+    # Price
     price = None
-    for sel in ["[itemprop='price']", ".product-price", ".price", ".pdp-price"]:
-        el = soup.select_one(sel)
-        if el:
-            price = safe_float_price(el.get_text(" ", strip=True))
-            if price is not None:
+    # common patterns: itemprop="price", meta property, or big price class
+    meta_price = soup.find("meta", attrs={"property": "product:price:amount"}) or soup.find("meta", attrs={"itemprop": "price"})
+    if meta_price and meta_price.get("content"):
+        price = parse_price(meta_price.get("content", ""))
+    if price is None:
+        # try visible price
+        price_candidates = soup.select("[itemprop='price'], .price, .product-price, .pdp-price, .value")
+        for el in price_candidates:
+            txt = el.get_text(" ", strip=True)
+            p = parse_price(txt)
+            if p is not None and p > 0:
+                price = p
                 break
     if price is None:
-        txt = soup.get_text(" ", strip=True)
-        m = re.search(r"(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)\s*€", txt)
-        if m:
-            price = safe_float_price(m.group(1) + "€")
+        price = 0.0
 
-    # Condition / availability (best-effort)
-    txt = soup.get_text(" ", strip=True).lower()
-    cond = None
-    for c in ["perfecto", "muy bueno", "bueno", "usado", "aceptable", "nuevo"]:
-        if c in txt:
-            cond = c
-            break
+    # Store / product code (we’ll use last path segment as fallback store id)
+    store = ""
+    # Sometimes appears as product code like CC090_E259523_0 in text
+    m = re.search(r"\b(CC\d{3}_E\d+_\d)\b", html)
+    if m:
+        store = m.group(1)
+    if not store:
+        store = url.rsplit("/", 1)[-1].replace(".html", "")
 
-    disp = []
-    if "envío" in txt or "envio" in txt:
-        disp.append("envío")
-    if "tienda" in txt:
-        disp.append("tienda")
-    availability = " + ".join(sorted(set(disp))) if disp else ""
+    # Condition
+    cond = ""
+    # look for "Estado" label-ish
+    text_all = canon(soup.get_text(" ", strip=True))
+    if "estado" in text_all:
+        # naive extraction around 'estado'
+        m2 = re.search(r"estado\s+([a-záéíóúñ ]{3,20})", text_all)
+        if m2:
+            cond = canon(m2.group(1))[:30]
+    if not cond:
+        # fallback: detect in title/text
+        if "perfecto" in text_all or "impecable" in text_all:
+            cond = "perfecto"
+        elif "excelente" in text_all or "muy buen estado" in text_all:
+            cond = "muy bueno"
+        elif "bueno" in text_all:
+            cond = "bueno"
+        elif "usado" in text_all:
+            cond = "usado"
+        else:
+            cond = "desconocido"
 
-    # Store/ID: CCxxx_yyyy
-    m_id = re.search(r"(CC\d{3}_[A-Z0-9]+_\d+)", html)
-    store_id = m_id.group(1) if m_id else ""
+    # Availability (envío/tienda)
+    availability = []
+    if "envío" in text_all or "envio" in text_all:
+        availability.append("envío")
+    if "tienda" in text_all or "recogida" in text_all:
+        availability.append("tienda")
+    if not availability:
+        availability_str = "desconocido"
+    else:
+        availability_str = " + ".join(availability)
 
-    # Shipping cost: hard to parse; keep default
-    ship = CC_DEFAULT_SHIP_EUR
-
-    return {
-        "detail_title": title,
-        "detail_price": price,
-        "cond": cond or "",
-        "availability": availability or "",
-        "store": store_id or "",
-        "ship": ship
-    }
-
-
-# =========================
-# ECONOMICS
-# =========================
-def close_estimate_eur(target: Dict[str, Any], cond: str) -> float:
-    # Use p50 as base
-    p50 = float(target["catawiki_estimate"]["p50"])
-
-    # Very light condition adjust (avoid overfitting)
-    c = canon(cond)
-    adj = 1.00
-    if "perfecto" in c or "excelente" in c or "como nuevo" in c:
-        adj = 1.05
-    elif "aceptable" in c:
-        adj = 0.92
-    elif "usado" in c:
-        adj = 0.97
-    elif "bueno" in c:
-        adj = 1.00
-
-    est = p50 * adj * CLOSE_HAIRCUT
-    return round(est, 2)
+    return Listing(
+        title=title,
+        price_eur=float(price),
+        url=url,
+        store=store,
+        cond=canon(cond),
+        availability=availability_str,
+    )
 
 
-def net_profit_eur(buy: float, ship: float, close_est: float) -> Tuple[float, float]:
+# -----------------------------
+# TARGETS / MATCHING / SCORING
+# -----------------------------
+def load_targets(path: str) -> List[Dict[str, Any]]:
+    raw = None
+    with open(path, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+
+    # Expect dict with {targets:[...]}
+    if isinstance(raw, dict) and "targets" in raw and isinstance(raw["targets"], list):
+        targets = raw["targets"]
+    elif isinstance(raw, list):
+        # allow legacy list
+        targets = raw
+    else:
+        raise ValueError("target_list.json inválido: debe ser {targets:[...]} o lista")
+
+    valid: List[Dict[str, Any]] = []
+    for t in targets:
+        if not isinstance(t, dict):
+            continue
+        # Required-ish keys we rely on:
+        if not t.get("id") or not t.get("brand") or not t.get("catawiki_estimate"):
+            continue
+        est = t.get("catawiki_estimate")
+        if not isinstance(est, dict) or "p50" not in est:
+            continue
+        valid.append(t)
+
+    if not valid:
+        raise ValueError("No valid targets loaded from target_list.json")
+    return valid
+
+
+def extract_brand(title: str) -> Optional[str]:
+    t = canon(title)
+    # First check reputable brands
+    for b in sorted(REPUTABLE_BRANDS, key=lambda x: -len(x)):
+        if canon(b) in t:
+            # normalize TAG Heuer variants
+            if b == "tag" or b == "heuer":
+                return "tag heuer"
+            if b == "baume" or "baume" in b:
+                return "baume & mercier"
+            return canon(b)
+    # Then banned brands
+    for b in sorted(BANNED_BRANDS, key=lambda x: -len(x)):
+        if canon(b) in t:
+            return canon(b)
+    return None
+
+
+def is_banned_brand(brand: Optional[str]) -> bool:
+    if not brand:
+        return False
+    b = canon(brand)
+    return b in {canon(x) for x in BANNED_BRANDS}
+
+
+def is_reputable_brand(brand: Optional[str]) -> bool:
+    if not brand:
+        return False
+    b = canon(brand)
+    rep = {canon(x) for x in REPUTABLE_BRANDS}
+    # accept "tag heuer" even if extracted as "tag heuer"
+    return b in rep or (b == "tag heuer" and ("tag heuer" in rep))
+
+
+def has_any(text: str, terms: List[str]) -> bool:
+    t = canon(text)
+    return any(canon(x) in t for x in terms)
+
+
+def compute_match_score(title: str, target: Dict[str, Any]) -> int:
     """
-    Conservative:
-    - You pay buy + ship
-    - On sale, Catawiki fee = max(12.5%, 3€) + VAT(21%) on that fee
+    0..100 simple deterministic score. We prefer clear inclusion, penalize missing.
     """
-    fee = max(close_est * CATWIKI_COMMISSION_RATE, CATWIKI_COMMISSION_MIN)
-    fee_total = fee * (1.0 + CATWIKI_VAT_ON_COMMISSION)
-    net = close_est - fee_total - buy - ship
-    roi = net / (buy + ship) if (buy + ship) > 0 else 0.0
-    return round(net, 2), roi
+    t = canon(title)
+    score = 0
+
+    brand = canon(target.get("brand", ""))
+    if brand and brand in t:
+        score += 35
+    else:
+        # if brand absent, very hard to be confident
+        score += 0
+
+    # must_include: all must be present
+    must_in = [canon(x) for x in (target.get("must_include") or []) if isinstance(x, str)]
+    if must_in:
+        present = sum(1 for x in must_in if x and x in t)
+        if present == len(must_in):
+            score += 35
+        else:
+            score += int(35 * (present / max(1, len(must_in))))
+    else:
+        score += 10  # neutral
+
+    # model_keywords: partial hints
+    kws = [canon(x) for x in (target.get("model_keywords") or []) if isinstance(x, str)]
+    if kws:
+        present = sum(1 for x in kws if x and x in t)
+        score += min(20, present * 7)
+
+    # condition/helpful hints
+    if has_any(t, GOOD_COND_TERMS):
+        score += 5
+    if has_any(t, BAD_COND_TERMS):
+        score -= 25
+
+    # clamp
+    if score < 0:
+        score = 0
+    if score > 100:
+        score = 100
+    return score
 
 
-# =========================
-# OUTPUT
-# =========================
-def format_top(top: List[Dict[str, Any]]) -> str:
-    header = f"🕗 TIMELAB Morning Scan — TOP {len(top)} (CashConverters ES)\n\n"
-    if not top:
-        return header + "No se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI)."
-
-    lines = [header]
-    for i, x in enumerate(top, 1):
-        lines.append(
-            f"{i}) [cc] {x['title']}\n"
-            f"   💶 Compra: {x['buy']:.2f}€ | 🎯 Cierre est.: {x['close_est']:.2f}€\n"
-            f"   ✅ Neto est.: {x['net']:.2f}€ | ROI: {x['roi']*100:.1f}% | Match: {x['match']} | Cond: {x['cond'] or '-'} | Disp: {x['availability'] or '-'}\n"
-            f"   🧩 Target: {x['target_id']}\n"
-            f"   📍 {x['store'] or '-'}\n"
-            f"   🔗 {x['url']}\n"
-        )
-    return "\n".join(lines).strip()
+def violates_must_exclude(title: str, target: Dict[str, Any]) -> bool:
+    t = canon(title)
+    ex = [canon(x) for x in (target.get("must_exclude") or []) if isinstance(x, str)]
+    return any(x and x in t for x in ex)
 
 
-def debug_msg(diag: Dict[str, Any]) -> str:
-    # compact and readable
-    lines = []
-    lines.append(f"🧪 TIMELAB CC Debug — scanned:{diag.get('scanned', 0)} | page_bad:{diag.get('page_bad', 0)}")
-    b = diag.get("brands", {})
-    lines.append(f"brands: reputable:{b.get('reputable', 0)} | banned:{b.get('banned', 0)} | not_reputable:{b.get('not_reputable', 0)} | no_brand:{b.get('no_brand', 0)}")
-    p = diag.get("passed", {})
-    lines.append(f"passed: match_ok:{p.get('match_ok', 0)} | net_ok:{p.get('net_ok', 0)}")
-    lines.append(f"thresholds: match>={CC_MIN_MATCH_SCORE} | net>={CC_MIN_NET_EUR} OR roi>={CC_MIN_NET_ROI} | haircut:{CLOSE_HAIRCUT}")
-    s = diag.get("stop", {})
-    lines.append(f"stop: max_items:{s.get('max_items', CC_MAX_ITEMS)} | good_brands_target:{s.get('good_brands_target', CC_GOOD_BRANDS_TARGET)}")
-    t = diag.get("targets", {})
-    lines.append(f"targets: items:{t.get('items', 0)} | valid:{t.get('valid', 0)}")
-    lines.append(f"verify_mode:{1 if CC_VERIFY_MODE else 0}")
-    return "\n".join(lines)
+def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], int]:
+    best_t = None
+    best_s = -1
+    for trg in targets:
+        # quick brand check for speed
+        if canon(trg.get("brand", "")) and canon(trg.get("brand", "")) not in canon(title):
+            # still allow if must_include might match brand-like tokens; keep it but lower priority
+            pass
+
+        if violates_must_exclude(title, trg):
+            continue
+
+        s = compute_match_score(title, trg)
+        if s > best_s:
+            best_s = s
+            best_t = trg
+    return best_t, best_s
 
 
-# =========================
-# MAIN
-# =========================
+def condition_adjustment(cond: str, title: str) -> float:
+    """
+    Adjust close estimate modestly; no model-specific patches.
+    """
+    c = canon(cond) + " " + canon(title)
+    # strong positive
+    if "perfecto" in c or "impecable" in c or "como nuevo" in c:
+        return 1.05
+    if "excelente" in c or "muy bueno" in c or "muy buen estado" in c:
+        return 1.03
+    # neutral
+    if "bueno" in c:
+        return 1.00
+    # negative
+    if "usado" in c or "desgaste" in c:
+        return 0.92
+    if has_any(c, BAD_COND_TERMS):
+        return 0.80
+    return 1.00
+
+
+def estimate_close_eur(target: Dict[str, Any], cond: str, title: str) -> float:
+    est = target.get("catawiki_estimate", {})
+    p50 = float(est.get("p50", 0.0))
+    base = p50 * float(CLOSE_HAIRCUT)
+    return round(base * condition_adjustment(cond, title), 2)
+
+
+def estimate_net(buy_eur: float, close_eur: float, shipping_eur: float = 0.0) -> Tuple[float, float]:
+    """
+    Net after Catawiki commission + VAT on commission (approx).
+    """
+    commission = close_eur * CATWIKI_COMMISSION_RATE
+    commission_vat = commission * CATWIKI_COMMISSION_VAT
+    fees = commission + commission_vat
+    net = close_eur - fees - buy_eur - shipping_eur
+    denom = max(1e-9, (buy_eur + shipping_eur))
+    roi = net / denom
+    return round(net, 2), round(roi, 4)
+
+
+def risk_allowed(target: Dict[str, Any]) -> bool:
+    r = canon(str(target.get("risk", "medium")))
+    return r in ALLOW_FAKE_RISK
+
+
+# -----------------------------
+# MAIN SCAN
+# -----------------------------
 def run() -> None:
-    # start message (optional)
-    if CC_DEBUG:
-        tg_send("🧪 TIMELAB CashConverters scanner: started (debug)")
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        # Fail silently (but in your case you do have it)
+        return
 
-    targets = load_targets("target_list.json")
+    session = make_session()
 
-    diag = {
+    # Load targets
+    try:
+        targets = load_targets("target_list.json")
+    except Exception as e:
+        telegram_send(
+            "❌ TIMELAB CashConverters scanner: target_list.json inválido (no se pudieron cargar targets válidos)\n\n"
+            f"error: {type(e).__name__}: {e}"
+        )
+        return
+
+    # Diagnostics
+    diag: Dict[str, Any] = {
         "scanned": 0,
         "page_bad": 0,
         "brands": {"reputable": 0, "banned": 0, "not_reputable": 0, "no_brand": 0},
         "passed": {"match_ok": 0, "net_ok": 0},
+        "thresholds": {
+            "match>=": CC_MIN_MATCH_SCORE,
+            "net>=": CC_MIN_NET_EUR,
+            "roi>=": CC_MIN_NET_ROI,
+            "haircut": CLOSE_HAIRCUT,
+        },
         "stop": {"max_items": CC_MAX_ITEMS, "good_brands_target": CC_GOOD_BRANDS_TARGET},
-        "targets": {"items": len(targets), "valid": len(targets)}
+        "targets": {"items": len(targets), "valid": len(targets)},
+        "verify_mode": 1 if CC_VERIFY_MODE else 0,
     }
 
-    session = requests.Session()
+    # Collect listing URLs by paginating via start/sz
+    seen_urls = set()
+    listing_urls: List[str] = []
 
-    # We crawl starting list; CC uses pagination but can vary.
-    # We will follow “next” links if present; otherwise we keep collecting from current page only.
-    to_visit = [START_URL]
-    visited = set()
-    candidates: List[Dict[str, Any]] = []
-    good_brand_seen = 0
+    # We also stop early if we already saw enough reputable-brand items (optional)
+    reputable_seen = 0
 
-    while to_visit and diag["scanned"] < CC_MAX_ITEMS:
-        url = to_visit.pop(0)
-        if url in visited:
-            continue
-        visited.add(url)
+    for page_idx in range(CC_MAX_PAGES):
+        if len(listing_urls) >= CC_MAX_ITEMS:
+            break
 
-        r = fetch(url, session)
+        start = page_idx * CC_PAGE_SIZE
+        page_url = f"{BASE_LISTING_URL}&sz={CC_PAGE_SIZE}&start={start}"
+        r = fetch(page_url, session)
         if not r or r.status_code != 200 or not r.text or len(r.text) < 2000:
             diag["page_bad"] += 1
-            continue
+            break
 
-        cards = parse_listing_cards(r.text)
+        urls = extract_product_urls(r.text)
         polite_sleep(CC_THROTTLE_S)
 
-        # add next links if any
-        soup = BeautifulSoup(r.text, "lxml")
-        next_a = soup.find("a", attrs={"rel": "next"})
-        if next_a and next_a.get("href"):
-            nxt = next_a.get("href")
-            nxt_url = nxt if nxt.startswith("http") else BASE + nxt
-            if nxt_url not in visited:
-                to_visit.append(nxt_url)
+        # If this page yields no products, stop
+        if not urls:
+            break
 
-        for card in cards:
-            if diag["scanned"] >= CC_MAX_ITEMS:
+        for u in urls:
+            if u in seen_urls:
+                continue
+            seen_urls.add(u)
+            listing_urls.append(u)
+            if len(listing_urls) >= CC_MAX_ITEMS:
                 break
 
-            # fetch detail to enrich
-            dr = fetch(card["url"], session)
+        # Soft stop if already found enough reputable brand items to evaluate
+        # (This is a performance knob; disable by setting CC_GOOD_BRANDS_TARGET very high)
+        if reputable_seen >= CC_GOOD_BRANDS_TARGET:
+            break
+
+        # We don't know brands yet; we'll update reputable_seen during detail fetch
+
+    # Scan details + scoring
+    candidates: List[Dict[str, Any]] = []
+    debug_rejected: List[Dict[str, Any]] = []
+
+    for u in listing_urls:
+        if diag["scanned"] >= CC_MAX_ITEMS:
+            break
+
+        r = fetch(u, session)
+        if not r or r.status_code != 200 or not r.text:
+            diag["page_bad"] += 1
             polite_sleep(CC_THROTTLE_S)
-            if not dr or dr.status_code != 200 or not dr.text or len(dr.text) < 2000:
-                diag["page_bad"] += 1
-                continue
+            continue
 
-            detail = parse_detail(dr.text)
-            title = detail["detail_title"] or card["title"] or ""
-            buy = detail["detail_price"] if detail["detail_price"] is not None else card["price"]
+        listing = parse_detail_page(r.text, u)
+        polite_sleep(CC_THROTTLE_S)
 
-            if not title or buy is None:
-                diag["scanned"] += 1
-                continue
+        diag["scanned"] += 1
 
-            # brand filter (global)
-            if is_banned_brand(title):
-                diag["brands"]["banned"] += 1
-                diag["scanned"] += 1
-                continue
+        # Brand filtering (fast)
+        b = extract_brand(listing.title)
+        if b is None:
+            diag["brands"]["no_brand"] += 1
+            continue
+        if is_banned_brand(b):
+            diag["brands"]["banned"] += 1
+            continue
+        if not is_reputable_brand(b):
+            diag["brands"]["not_reputable"] += 1
+            continue
 
-            brand = detect_brand(title, targets)
-            if not brand:
-                diag["brands"]["no_brand"] += 1
-                diag["scanned"] += 1
-                continue
+        diag["brands"]["reputable"] += 1
+        reputable_seen += 1
 
-            # treat it as reputable if brand appears in any target brand set
-            diag["brands"]["reputable"] += 1
-            good_brand_seen += 1
+        # Global “bad condition” filter
+        if has_any(listing.title, BAD_COND_TERMS):
+            continue
 
-            # match to best target
-            trg, match = best_target(title, targets)
-            if not trg:
-                diag["brands"]["not_reputable"] += 1
-                diag["scanned"] += 1
-                continue
+        # Match to targets
+        target, match = best_target(listing.title, targets)
+        if not target or match < CC_MIN_MATCH_SCORE:
+            if target and CC_VERIFY_MODE:
+                debug_rejected.append(
+                    {
+                        "title": listing.title,
+                        "price": listing.price_eur,
+                        "url": listing.url,
+                        "match": match,
+                        "target": target.get("id"),
+                        "cond": listing.cond,
+                    }
+                )
+            continue
+        diag["passed"]["match_ok"] += 1
 
-            # threshold match
-            if match >= CC_MIN_MATCH_SCORE:
-                diag["passed"]["match_ok"] += 1
+        # Fake risk allowed
+        if not risk_allowed(target):
+            continue
 
-            close_est = close_estimate_eur(trg, detail.get("cond", ""))
-            ship = float(detail.get("ship", CC_DEFAULT_SHIP_EUR) or 0.0)
-            net, roi = net_profit_eur(float(buy), ship, close_est)
+        close_est = estimate_close_eur(target, listing.cond, listing.title)
 
-            if (match >= CC_MIN_MATCH_SCORE) and (net >= CC_MIN_NET_EUR or roi >= CC_MIN_NET_ROI):
-                diag["passed"]["net_ok"] += 1
-                candidates.append({
-                    "title": title,
-                    "url": card["url"],
-                    "buy": float(buy),
-                    "ship": ship,
-                    "cond": detail.get("cond", ""),
-                    "availability": detail.get("availability", ""),
-                    "store": detail.get("store", ""),
-                    "target_id": trg["id"],
-                    "match": match,
-                    "close_est": close_est,
-                    "net": net,
-                    "roi": roi
-                })
+        # Optional max_buy_eur hard cap if present
+        max_buy = target.get("max_buy_eur")
+        if isinstance(max_buy, (int, float)) and listing.price_eur > float(max_buy):
+            if CC_VERIFY_MODE:
+                debug_rejected.append(
+                    {
+                        "title": listing.title,
+                        "price": listing.price_eur,
+                        "url": listing.url,
+                        "match": match,
+                        "target": target.get("id"),
+                        "cond": listing.cond,
+                        "reason": "over_max_buy",
+                    }
+                )
+            continue
 
-            diag["scanned"] += 1
+        shipping = 0.0  # CashConverters often has shipping included / not shown; keep 0 unless you add parsing later
+        net, roi = estimate_net(listing.price_eur, close_est, shipping)
 
-            # stop early once we have enough reputable items sampled (optional)
-            if good_brand_seen >= CC_GOOD_BRANDS_TARGET and diag["scanned"] >= min(CC_MAX_ITEMS, 200):
-                # if we already saw enough reputable brands, no need to crawl too much
-                break
+        if not (net >= CC_MIN_NET_EUR or roi >= CC_MIN_NET_ROI):
+            if CC_VERIFY_MODE:
+                debug_rejected.append(
+                    {
+                        "title": listing.title,
+                        "price": listing.price_eur,
+                        "url": listing.url,
+                        "match": match,
+                        "target": target.get("id"),
+                        "cond": listing.cond,
+                        "net": net,
+                        "roi": roi,
+                        "close": close_est,
+                        "reason": "net_or_roi_below",
+                    }
+                )
+            continue
 
-    # Rank TOP 10 by net, then match
-    candidates.sort(key=lambda x: (x["net"], x["match"], x["roi"]), reverse=True)
+        diag["passed"]["net_ok"] += 1
+
+        candidates.append(
+            {
+                "title": listing.title,
+                "buy": listing.price_eur,
+                "close": close_est,
+                "net": net,
+                "roi": roi,
+                "match": match,
+                "cond": listing.cond,
+                "disp": listing.availability,
+                "store": listing.store,
+                "url": listing.url,
+                "target": target.get("id"),
+            }
+        )
+
+    # Rank and output
+    candidates.sort(key=lambda x: (x["net"], x["match"]), reverse=True)
     top = candidates[:10]
 
-    tg_send(format_top(top))
+    header = f"🕗 TIMELAB Morning Scan — TOP {len(top)} (CashConverters ES)\n\n"
 
+    if not top:
+        msg = (
+            header
+            + "No se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI)."
+        )
+        telegram_send(msg)
+    else:
+        lines = [header]
+        for i, it in enumerate(top, 1):
+            lines.append(f"{i}) [cc] {it['title']}")
+            lines.append(
+                f"   💶 Compra: {it['buy']:.2f}€ | 🎯 Cierre est.: {it['close']:.2f}€"
+            )
+            lines.append(
+                f"   ✅ Neto est.: {it['net']:.2f}€ | ROI: {it['roi']*100:.1f}% | Match: {it['match']} | Cond: {it['cond']} | Disp: {it['disp']}"
+            )
+            lines.append(f"   🧩 Target: {it['target']}")
+            lines.append(f"   📍 {it['store']}")
+            lines.append(f"   🔗 {it['url']}\n")
+        telegram_send("\n".join(lines).strip())
+
+    # Debug message (separate)
     if CC_DEBUG:
-        tg_send(debug_msg(diag))
+        dbg = []
+        dbg.append(f"🧪 TIMELAB CC Debug — scanned:{diag['scanned']} | page_bad:{diag['page_bad']}")
+        dbg.append(
+            "brands: "
+            f"reputable:{diag['brands']['reputable']} | "
+            f"banned:{diag['brands']['banned']} | "
+            f"not_reputable:{diag['brands']['not_reputable']} | "
+            f"no_brand:{diag['brands']['no_brand']}"
+        )
+        dbg.append(
+            "passed: "
+            f"match_ok:{diag['passed']['match_ok']} | "
+            f"net_ok:{diag['passed']['net_ok']}"
+        )
+        dbg.append(
+            "thresholds: "
+            f"match>={CC_MIN_MATCH_SCORE} | "
+            f"net>={CC_MIN_NET_EUR} OR roi>={CC_MIN_NET_ROI} | "
+            f"haircut:{CLOSE_HAIRCUT}"
+        )
+        dbg.append(
+            "stop: "
+            f"max_items:{CC_MAX_ITEMS} | "
+            f"good_brands_target:{CC_GOOD_BRANDS_TARGET}"
+        )
+        dbg.append(f"targets: items:{len(targets)} | valid:{len(targets)}")
+        dbg.append(f"verify_mode:{1 if CC_VERIFY_MODE else 0}")
+
+        # If verify mode, show a few rejected “near misses” (short list)
+        if CC_VERIFY_MODE and debug_rejected:
+            dbg.append("\nTop candidates (even if rejected):")
+            debug_rejected.sort(key=lambda x: x.get("match", 0), reverse=True)
+            for it in debug_rejected[:5]:
+                extra = []
+                if "net" in it and "roi" in it:
+                    extra.append(f"net:{it['net']:.2f}")
+                    extra.append(f"roi:{it['roi']*100:.1f}%")
+                if "reason" in it:
+                    extra.append(f"reason:{it['reason']}")
+                extra_s = (" | " + " ".join(extra)) if extra else ""
+                dbg.append(f"- match:{it.get('match')} target:{it.get('target')} price:{it.get('price'):.2f} {it.get('title')}{extra_s}")
+                dbg.append(f"  url:{it.get('url')}")
+
+        telegram_send("\n".join(dbg).strip())
 
 
 if __name__ == "__main__":
     try:
         run()
     except Exception as e:
-        # separated crash message
-        msg = "❌ TIMELAB CashConverters scanner crashed\n" + repr(e)
-        try:
-            tg_send(msg)
-        except Exception:
-            pass
+        telegram_send(
+            "❌ TIMELAB CashConverters scanner crashed\n"
+            f"{type(e).__name__}: {e}"
+        )
         raise
