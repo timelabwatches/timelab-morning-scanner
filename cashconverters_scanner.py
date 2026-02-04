@@ -172,20 +172,6 @@ def parse_detail_page(url: str) -> Dict[str, Any]:
         "page_ok": page_ok
     }
 
-def _to_float(v: Any) -> float:
-    if v is None:
-        return 0.0
-    if isinstance(v, (int, float)):
-        return float(v)
-    if isinstance(v, str):
-        vv = v.strip().replace("€", "").strip()
-        vv = vv.replace(".", "").replace(",", ".")
-        try:
-            return float(vv)
-        except Exception:
-            return 0.0
-    return 0.0
-
 def _as_list(v: Any) -> List[str]:
     if v is None:
         return []
@@ -196,9 +182,58 @@ def _as_list(v: Any) -> List[str]:
         return [s] if s else []
     return []
 
+def _to_float(v: Any) -> float:
+    """
+    Convierte a float de forma robusta:
+    - números -> float
+    - strings "1.234,56 €" -> 1234.56
+    - listas -> primer num válido
+    - dicts -> intenta claves típicas (median/mid/p50/avg/mean/estimate/base)
+              si no, toma el máximo numérico encontrado.
+    """
+    if v is None:
+        return 0.0
+
+    if isinstance(v, (int, float)):
+        return float(v)
+
+    if isinstance(v, str):
+        vv = v.strip().replace("€", "").strip()
+        vv = vv.replace(".", "").replace(",", ".")
+        try:
+            return float(vv)
+        except Exception:
+            return 0.0
+
+    if isinstance(v, list):
+        for it in v:
+            f = _to_float(it)
+            if f > 0:
+                return f
+        return 0.0
+
+    if isinstance(v, dict):
+        # claves típicas
+        preferred_keys = ["mid", "median", "p50", "avg", "mean", "estimate", "base", "value", "close"]
+        for k in preferred_keys:
+            if k in v:
+                f = _to_float(v.get(k))
+                if f > 0:
+                    return f
+
+        # si no hay claves típicas, coge el máximo numérico dentro del dict
+        mx = 0.0
+        for _, vv in v.items():
+            f = _to_float(vv)
+            if f > mx:
+                mx = f
+        return mx
+
+    return 0.0
+
 def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], str]:
     """
-    Tu esquema real (según keys_sample):
+    Tu esquema (según keys_sample):
       brand, id, catawiki_estimate, model_keywords, must_include, must_exclude, query, risk, max_buy_eur
     """
     with open(path, "r", encoding="utf-8") as f:
@@ -217,47 +252,59 @@ def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], 
     valid: List[Dict[str, Any]] = []
     sample_keys = set()
 
-    for it in items:
+    # diagnóstico adicional: cómo viene catawiki_estimate realmente
+    estimate_type = ""
+    estimate_preview = ""
+
+    for idx, it in enumerate(items):
         if not isinstance(it, dict):
             continue
+
         for k in it.keys():
             sample_keys.add(str(k))
 
         tid = str(it.get("id") or "").strip()
         brand = str(it.get("brand") or "").strip()
-        base = _to_float(it.get("catawiki_estimate"))
+        raw_est = it.get("catawiki_estimate")
 
-        # keywords extra
+        if idx == 0:
+            estimate_type = type(raw_est).__name__
+            try:
+                estimate_preview = json.dumps(raw_est, ensure_ascii=False)[:180]
+            except Exception:
+                estimate_preview = str(raw_est)[:180]
+
+        base = _to_float(raw_est)
+
         model_keywords = _as_list(it.get("model_keywords"))
         must_include = _as_list(it.get("must_include"))
         must_exclude = _as_list(it.get("must_exclude"))
 
         risk = str(it.get("risk") or "low").lower().strip()
 
-        # validación mínima
         if tid and brand and base > 0:
             valid.append({
                 "id": tid,
                 "brand": brand,
-                "base_close_eur": base,          # normalizado
-                "keywords": model_keywords,      # normalizado
+                "base_close_eur": base,
+                "keywords": model_keywords,
                 "must_include": must_include,
                 "must_exclude": must_exclude,
-                "fake_risk": risk,               # normalizado
+                "fake_risk": risk,
             })
 
     diag_parts.append(f"items:{len(items)}")
     diag_parts.append(f"valid:{len(valid)}")
     if sample_keys:
         diag_parts.append("keys_sample:" + ",".join(sorted(list(sample_keys))[:25]))
+    if estimate_type:
+        diag_parts.append(f"catawiki_estimate_type:{estimate_type}")
+    if estimate_preview:
+        diag_parts.append(f"catawiki_estimate_preview:{estimate_preview}")
 
     return valid, " | ".join(diag_parts)
 
 def passes_must_rules(title: str, trg: Dict[str, Any]) -> bool:
-    """
-    must_include: todas deben aparecer (si existe)
-    must_exclude: ninguna debe aparecer
-    """
     t = canon(title)
 
     for kw in (trg.get("must_exclude") or []):
@@ -280,7 +327,6 @@ def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dic
     best_score = -1
 
     for trg in targets:
-        # must rules
         if not passes_must_rules(title, trg):
             continue
 
@@ -289,13 +335,11 @@ def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dic
         if brand and brand in t:
             score += 60
 
-        # keywords de modelo
         for kw in (trg.get("keywords") or []):
             kwc = canon(str(kw))
             if kwc and kwc in t:
                 score += 10
 
-        # pequeño bonus si el id aparece (a veces id contiene ref/modelo)
         tid = canon(trg.get("id", ""))
         if tid and tid in t:
             score += 10
@@ -326,7 +370,7 @@ def run() -> None:
         tg_send(
             "❌ TIMELAB CashConverters scanner: target_list.json inválido (no se pudieron cargar targets válidos)\n\n"
             f"diag: {diag}\n\n"
-            "Acción: revisa el formato (debe ser {targets:[...]}) o pásame 30-50 líneas del archivo."
+            "Acción: pega aquí 1 target completo (uno solo) o confirma si catawiki_estimate es dict/list/string."
         )
         return
 
