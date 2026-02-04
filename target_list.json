@@ -1,499 +1,814 @@
 {
-  "version": "2026-02-04",
-  "notes": "TIMELAB target list v4 (expanded). Conservative Catawiki p50/p75. Focus on liquidity and low/medium fake risk. Strong include/exclude to avoid parts/repairs. Adjust max_buy_eur to your risk appetite.",
+  "version": "2026-02-04-v5",
+  "notes": "TIMELAB target list v5. p50/p75 aligned to your TARGET LIST TL (Catawiki repeatable closes). Split mixed targets (Sinn, Hamilton, Seiko, Tudor, Nomos, Fortis, Montblanc). IMPORTANT: removed box/papers from exclusions (they are p75 drivers). Added p75_triggers_any to switch expected close from p50->p75 when listing looks full set/serviced/NOS. max_buy_eur set conservatively as ~0.75–0.80 * p50 (placeholder until we wire dynamic accounting).",
+  "globals": {
+    "p75_triggers_any": [
+      "full set",
+      "box",
+      "papers",
+      "paper",
+      "warranty",
+      "garantia",
+      "garantía",
+      "scatola",
+      "documenti",
+      "garantie",
+      "serviced",
+      "service",
+      "revision",
+      "revisado",
+      "revisada",
+      "revisione",
+      "overhauled",
+      "unworn",
+      "nos",
+      "new old stock",
+      "like new",
+      "mint"
+    ],
+    "hard_exclude_any": [
+      "for parts",
+      "parts only",
+      "spares",
+      "ricambi",
+      "piece",
+      "pièces",
+      "pezzi",
+      "movement only",
+      "caliber only",
+      "case only",
+      "dial only",
+      "crown only",
+      "repair",
+      "da riparare",
+      "a riparare",
+      "non working",
+      "not working",
+      "doesn't work",
+      "does not work",
+      "defekt",
+      "defective",
+      "broken",
+      "incomplete"
+    ],
+    "women_size_exclude_any": [
+      "lady",
+      "ladies",
+      "donna",
+      "femme",
+      "17x23",
+      "18mm",
+      "20mm",
+      "24mm",
+      "25mm",
+      "26mm",
+      "27mm",
+      "28mm",
+      "29mm",
+      "30mm",
+      "31mm",
+      "32mm",
+      "33mm"
+    ],
+    "replica_exclude_any": [
+      "replica",
+      "copy",
+      "imitacion",
+      "imitación",
+      "imitation",
+      "fake",
+      "falso"
+    ]
+  },
   "targets": [
     {
-      "id": "LON_CONQUEST_AUTO",
+      "id": "LON_CONQUEST_AUTO_VTG",
       "brand": "Longines",
-      "model_keywords": ["conquest", "automatic"],
+      "family": "Conquest",
+      "model_keywords": ["conquest", "automatic", "vintage"],
       "query": "Longines Conquest automatic vintage",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 750, "p75": 950, "notes": "auto 34-38mm; p75 full set/near mint" },
-      "max_buy_eur": 550,
+      "risk": "medium",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 340, "p75": 410, "notes": "vintage steel ~34–36mm; p75 = dial original + buen estado/servicio" },
+      "max_buy_eur": 250,
+      "p75_triggers_any": ["serviced", "service", "revisado", "revision", "full set", "box", "papers"],
       "must_include": ["longines", "conquest"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "boîtier", "dial", "cadran", "crown", "corona", "bracelet", "armband", "bracciale", "box", "scatola", "papers", "documenti", "parts", "spares", "ricambi", "repair", "riparazione", "da riparare", "non funciona", "non funziona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "boîtier", "dial", "cadran", "crown", "corona", "bracelet", "armband", "bracciale"]
     },
+
     {
-      "id": "ORIS_BCPD",
-      "brand": "Oris",
-      "model_keywords": ["big crown", "pointer date"],
-      "query": "Oris Big Crown Pointer Date automatic",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 850, "p75": 1050, "notes": "steel BCPD; p75 full set/excellent" },
-      "max_buy_eur": 650,
-      "must_include": ["oris", "big crown"],
-      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran", "crown", "bracelet", "parts", "spares", "ricambi", "repair", "non funciona", "non funziona", "for parts"]
-    },
-    {
-      "id": "ORIS_AQUIS_DATE",
-      "brand": "Oris",
-      "model_keywords": ["aquis", "date"],
-      "query": "Oris Aquis Date automatic",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 900, "p75": 1150, "notes": "p75 if full set/excellent" },
-      "max_buy_eur": 750,
-      "must_include": ["oris", "aquis"],
-      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "non funciona", "non funziona", "for parts"]
-    },
-    {
-      "id": "BMM_CLIFTON",
-      "brand": "Baume & Mercier",
-      "model_keywords": ["clifton"],
-      "query": "Baume Mercier Clifton automatic",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 650, "p75": 850, "notes": "p75 full set/very clean" },
-      "max_buy_eur": 550,
-      "must_include": ["baume", "clifton"],
-      "must_exclude": ["quartz", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funziona"]
-    },
-    {
-      "id": "BMM_CLASSIMA",
-      "brand": "Baume & Mercier",
-      "model_keywords": ["classima"],
-      "query": "Baume Mercier Classima automatic",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 500, "p75": 650, "notes": "lower closes; p75 only mint/full set" },
-      "max_buy_eur": 400,
-      "must_include": ["baume", "classima"],
-      "must_exclude": ["quartz", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "FC_CLASSICS",
-      "brand": "Frederique Constant",
-      "model_keywords": ["frederique constant", "classics"],
-      "query": "Frederique Constant Classics automatic",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 650, "p75": 800, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 500,
-      "must_include": ["frederique", "constant"],
-      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "RW_FREELANCER",
-      "brand": "Raymond Weil",
-      "model_keywords": ["freelancer"],
-      "query": "Raymond Weil Freelancer automatic",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 550, "p75": 700, "notes": "modest closes; p75 full set/excellent" },
-      "max_buy_eur": 450,
-      "must_include": ["raymond", "weil", "freelancer"],
-      "must_exclude": ["quartz", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "SINN_556_104",
-      "brand": "Sinn",
-      "model_keywords": ["sinn 556", "sinn 104", "556", "104"],
-      "query": "Sinn 556 OR Sinn 104",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 1050, "p75": 1300, "notes": "p75 full set/very good condition" },
-      "max_buy_eur": 900,
-      "must_include": ["sinn"],
-      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "JUN_MAX_BILL_AUTO",
-      "brand": "Junghans",
-      "model_keywords": ["max bill", "automatic"],
-      "query": "Junghans Max Bill automatic",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 450, "p75": 600, "notes": "p75 only full set/NOS" },
-      "max_buy_eur": 380,
-      "must_include": ["junghans", "max bill"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "TAG_AQUARACER_AUTO",
-      "brand": "TAG Heuer",
-      "model_keywords": ["aquaracer", "automatic", "waf", "way"],
-      "query": "TAG Heuer Aquaracer automatic WAF OR WAY",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 900, "p75": 1150, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 800,
-      "must_include": ["tag", "heuer", "aquaracer"],
-      "must_exclude": ["quartz", "battery", "pile", "connected", "smartwatch", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "TAG_FORMULA1",
-      "brand": "TAG Heuer",
-      "model_keywords": ["formula 1", "waz", "caw", "wau"],
-      "query": "TAG Heuer Formula 1 WAZ OR CAW OR WAU",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 650, "p75": 850, "notes": "p75 for auto/full set; avoid Connected" },
-      "max_buy_eur": 500,
-      "must_include": ["tag", "heuer"],
-      "must_exclude": ["connected", "smartwatch", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "TISSOT_SEASTAR_P80",
-      "brand": "Tissot",
-      "model_keywords": ["seastar", "powermatic 80"],
-      "query": "Tissot Seastar Powermatic 80",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 600, "p75": 750, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 420,
-      "must_include": ["tissot", "seastar"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "TISSOT_PRX_AUTO",
-      "brand": "Tissot",
-      "model_keywords": ["prx", "powermatic 80"],
-      "query": "Tissot PRX Powermatic 80",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 650, "p75": 800, "notes": "p75 full set/like-new" },
-      "max_buy_eur": 450,
-      "must_include": ["tissot", "prx"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "HAM_KHAKI",
-      "brand": "Hamilton",
-      "model_keywords": ["khaki", "field", "murph"],
-      "query": "Hamilton Khaki Field OR Hamilton Murph automatic",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 650, "p75": 850, "notes": "Murph helps p75" },
-      "max_buy_eur": 550,
-      "must_include": ["hamilton"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "CERTINA_DS_ACTION",
-      "brand": "Certina",
-      "model_keywords": ["ds action", "powermatic 80"],
-      "query": "Certina DS Action Powermatic 80",
-      "risk": "low",
-      "catawiki_estimate": { "p50": 550, "p75": 700, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 450,
-      "must_include": ["certina", "ds action"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "SEIKO_ALPINIST",
-      "brand": "Seiko",
-      "model_keywords": ["alpinist", "sarb017", "spb121"],
-      "query": "Seiko Alpinist SARB017 OR SPB121",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 650, "p75": 800, "notes": "p75 for SARB017 clean/full set" },
-      "max_buy_eur": 450,
-      "must_include": ["seiko", "alpinist"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "SEIKO_TURTLE_SAMURAI",
-      "brand": "Seiko",
-      "model_keywords": ["prospex", "turtle", "samurai", "srp", "srpb", "srpc", "srpe"],
-      "query": "Seiko Prospex Turtle OR Samurai SRP",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 550, "p75": 700, "notes": "avoid kinetic/solar noise" },
-      "max_buy_eur": 350,
-      "must_include": ["seiko"],
-      "must_exclude": ["quartz", "battery", "pile", "kinetic", "solar", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "OMEGA_DEVILLE_VTG_AUTO",
-      "brand": "Omega",
-      "model_keywords": ["de ville", "automatic"],
-      "query": "Omega De Ville automatic vintage",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 700, "p75": 900, "notes": "avoid tiny ladies sizes" },
-      "max_buy_eur": 600,
-      "must_include": ["omega", "de ville"],
-      "must_exclude": ["quartz", "battery", "pile", "lady", "donna", "femme", "17x23", "18 mm", "18mm", "20 mm", "20mm", "24mm", "25mm", "26mm", "27mm", "28mm", "29mm", "30mm", "31mm", "32mm", "33mm", "case", "cassa", "boitier", "boîtier", "dial", "cadran", "parts", "spares", "ricambi", "repair", "for parts", "non funciona", "non funciona"]
-    },
-    {
-      "id": "ZENITH_VTG_AUTO_ONLY",
-      "brand": "Zenith",
-      "model_keywords": ["vintage", "automatic"],
-      "query": "Zenith vintage automatic",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 800, "p75": 1050, "notes": "34-38mm auto; avoid ladies small" },
-      "max_buy_eur": 600,
-      "must_include": ["zenith", "automatic"],
-      "must_exclude": ["quartz", "battery", "pile", "lady", "donna", "femme", "24mm", "25mm", "26mm", "27mm", "28mm", "29mm", "30mm", "31mm", "32mm", "33mm", "case", "cassa", "boitier", "boîtier", "dial", "cadran", "movement only", "caliber only", "parts", "spares", "ricambi", "repair", "da riparare", "non funciona", "non funciona", "for parts"]
-    },
-    {
-      "id": "LONGINES_VTG_AUTO_ONLY",
+      "id": "LONGINES_VTG_AUTO_GENERIC",
       "brand": "Longines",
-      "model_keywords": ["vintage", "automatic"],
+      "family": "Vintage Automatic (generic)",
+      "model_keywords": ["longines", "automatic", "vintage"],
       "query": "Longines vintage automatic",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 600, "p75": 800, "notes": "generic vintage auto; p75 strong model/condition" },
-      "max_buy_eur": 550,
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 220, "p75": 320, "notes": "genéricos; p75 solo en diales atractivos/tamaño 35–37mm" },
+      "max_buy_eur": 160,
+      "p75_triggers_any": ["sector", "serviced", "service", "revisado", "full set"],
       "must_include": ["longines", "automatic"],
-      "must_exclude": ["quartz", "battery", "pile", "lady", "donna", "femme", "24mm", "25mm", "26mm", "27mm", "28mm", "29mm", "30mm", "31mm", "32mm", "33mm", "case", "cassa", "boitier", "boîtier", "dial", "cadran", "movement only", "caliber only", "parts", "spares", "ricambi", "repair", "da riparare", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "boîtier", "dial", "cadran"]
     },
 
     {
       "id": "LONGINES_HYDROCONQUEST_AUTO",
       "brand": "Longines",
+      "family": "HydroConquest",
       "model_keywords": ["hydroconquest", "automatic"],
       "query": "Longines HydroConquest automatic",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 900, "p75": 1150, "notes": "strong liquidity; p75 full set/excellent" },
-      "max_buy_eur": 750,
+      "risk": "low",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 725, "p75": 900, "notes": "p75 full set + 2020+ + estado fuerte" },
+      "max_buy_eur": 550,
       "must_include": ["longines", "hydroconquest"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
+
     {
-      "id": "LONGINES_MASTER_COLLECTION",
+      "id": "LONGINES_MASTER_COLLECTION_SIMPLE",
       "brand": "Longines",
+      "family": "Master Collection (simple)",
       "model_keywords": ["master", "collection", "automatic"],
-      "query": "Longines Master Collection automatic",
+      "query": "Longines Master Collection automatic (3 hands/date)",
       "risk": "low",
-      "catawiki_estimate": { "p50": 1100, "p75": 1450, "notes": "p75 if moonphase/full set" },
-      "max_buy_eur": 900,
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 780, "p75": 900, "notes": "SOLO simple (3 agujas/fecha). No mezclar moonphase/chrono." },
+      "max_buy_eur": 600,
       "must_include": ["longines", "master"],
-      "must_exclude": ["quartz", "battery", "pile", "lady", "donna", "femme", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "moonphase", "chronograph", "chrono", "retrograde", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "OMEGA_SEAMASTER_AUTO_VTG",
-      "brand": "Omega",
-      "model_keywords": ["seamaster", "automatic"],
-      "query": "Omega Seamaster vintage automatic",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 900, "p75": 1200, "notes": "avoid tiny ladies sizes; p75 serviced/clean dial" },
-      "max_buy_eur": 750,
-      "must_include": ["omega", "seamaster"],
-      "must_exclude": ["quartz", "battery", "pile", "lady", "donna", "femme", "18mm", "20mm", "24mm", "25mm", "26mm", "27mm", "28mm", "29mm", "30mm", "31mm", "32mm", "33mm", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
-    },
-    {
-      "id": "OMEGA_AQUA_TERRA_AUTO",
-      "brand": "Omega",
-      "model_keywords": ["aqua terra", "automatic"],
-      "query": "Omega Aqua Terra automatic",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 2400, "p75": 3200, "notes": "good demand; p75 full set/excellent" },
-      "max_buy_eur": 2000,
-      "must_include": ["omega", "aqua terra"],
-      "must_exclude": ["quartz", "battery", "pile", "lady", "donna", "femme", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
-    },
-
-    {
-      "id": "TUDOR_1926_GLAMOUR",
-      "brand": "Tudor",
-      "model_keywords": ["1926", "glamour"],
-      "query": "Tudor 1926 OR Tudor Glamour automatic",
+      "id": "ORIS_BCPD",
+      "brand": "Oris",
+      "family": "Big Crown Pointer Date",
+      "model_keywords": ["big crown", "pointer date"],
+      "query": "Oris Big Crown Pointer Date automatic",
       "risk": "low",
-      "catawiki_estimate": { "p50": 1250, "p75": 1600, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 1000,
-      "must_include": ["tudor"],
-      "must_exclude": ["quartz", "battery", "pile", "lady", "donna", "femme", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
-    },
-    {
-      "id": "TUDOR_BLACK_BAY",
-      "brand": "Tudor",
-      "model_keywords": ["black bay"],
-      "query": "Tudor Black Bay",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 2600, "p75": 3300, "notes": "higher fake/parts risk; require strong match & good photos" },
-      "max_buy_eur": 2200,
-      "must_include": ["tudor", "black bay"],
-      "must_exclude": ["replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 650, "p75": 820, "notes": "steel; p75 full set/estado fuerte/dial atractivo" },
+      "max_buy_eur": 500,
+      "must_include": ["oris", "big crown"],
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran", "crown", "bracelet"]
     },
 
     {
-      "id": "BREITLING_COLT",
-      "brand": "Breitling",
-      "model_keywords": ["colt"],
-      "query": "Breitling Colt",
-      "risk": "medium",
-      "catawiki_estimate": { "p50": 1200, "p75": 1600, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 950,
-      "must_include": ["breitling", "colt"],
-      "must_exclude": ["replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "id": "ORIS_AQUIS_DATE",
+      "brand": "Oris",
+      "family": "Aquis Date",
+      "model_keywords": ["aquis", "date"],
+      "query": "Oris Aquis Date automatic",
+      "risk": "low",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 780, "p75": 1000, "notes": "p75 full set + bisel cerámico/estado impecable" },
+      "max_buy_eur": 600,
+      "must_include": ["oris", "aquis"],
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "TAG_CARRERA_AUTO",
+      "id": "BMM_CLIFTON_AUTO",
+      "brand": "Baume & Mercier",
+      "family": "Clifton",
+      "model_keywords": ["clifton", "automatic"],
+      "query": "Baume & Mercier Clifton automatic",
+      "risk": "low",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 720, "p75": 900, "notes": "p75 full set + 40–43mm + presentación fuerte" },
+      "max_buy_eur": 550,
+      "must_include": ["baume", "clifton"],
+      "must_exclude": ["quartz", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "BMM_CLASSIMA_AUTO",
+      "brand": "Baume & Mercier",
+      "family": "Classima",
+      "model_keywords": ["classima", "automatic"],
+      "query": "Baume & Mercier Classima automatic",
+      "risk": "low",
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 550, "p75": 680, "notes": "p75 solo full set / tamaño moderno / estado top" },
+      "max_buy_eur": 420,
+      "must_include": ["baume", "classima"],
+      "must_exclude": ["quartz", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "FC_CLASSICS_AUTO",
+      "brand": "Frederique Constant",
+      "family": "Classics",
+      "model_keywords": ["frederique", "constant", "classics", "automatic"],
+      "query": "Frederique Constant Classics automatic",
+      "risk": "low",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 520, "p75": 650, "notes": "excluir moonphase/heart beat/manufacture" },
+      "max_buy_eur": 400,
+      "must_include": ["frederique", "constant"],
+      "must_exclude": ["moonphase", "heart beat", "manufacture", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "RW_FREELANCER_AUTO",
+      "brand": "Raymond Weil",
+      "family": "Freelancer",
+      "model_keywords": ["freelancer", "automatic"],
+      "query": "Raymond Weil Freelancer automatic",
+      "risk": "low",
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 600, "p75": 720, "notes": "p75 full set/estado fuerte" },
+      "max_buy_eur": 450,
+      "must_include": ["raymond", "weil", "freelancer"],
+      "must_exclude": ["quartz", "case", "cassa", "boitier", "dial", "cadran", "chronograph", "chrono", "skeleton"]
+    },
+
+    {
+      "id": "SINN_556_AUTO",
+      "brand": "Sinn",
+      "family": "556",
+      "model_keywords": ["sinn 556", "556a", "556i", "556"],
+      "query": "Sinn 556",
+      "risk": "low",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 880, "p75": 1000, "notes": "AR en cristal muy sensible al precio" },
+      "max_buy_eur": 700,
+      "must_include": ["sinn", "556"],
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "SINN_104_AUTO",
+      "brand": "Sinn",
+      "family": "104",
+      "model_keywords": ["sinn 104", "104 st sa", "104"],
+      "query": "Sinn 104",
+      "risk": "low",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 1100, "p75": 1300, "notes": "p75 = AR/bisel perfectos + full set" },
+      "max_buy_eur": 880,
+      "must_include": ["sinn", "104"],
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "JUN_MAX_BILL_AUTO",
+      "brand": "Junghans",
+      "family": "Max Bill",
+      "model_keywords": ["max bill", "automatic"],
+      "query": "Junghans Max Bill automatic",
+      "risk": "low",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 720, "p75": 880, "notes": "ojo cristal marcado (penaliza mucho)" },
+      "max_buy_eur": 550,
+      "must_include": ["junghans", "max bill"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "TAG_AQUARACER_AUTO_WAF_WAY",
       "brand": "TAG Heuer",
+      "family": "Aquaracer",
+      "model_keywords": ["aquaracer", "automatic", "waf", "way"],
+      "query": "TAG Heuer Aquaracer automatic WAF OR WAY",
+      "risk": "medium",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 980, "p75": 1150, "notes": "p75 full set + bisel cerámico/estado top; WAY suele rendir mejor" },
+      "max_buy_eur": 780,
+      "must_include": ["tag", "heuer", "aquaracer"],
+      "must_exclude": ["quartz", "battery", "pile", "connected", "smartwatch", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "TAG_FORMULA1_AUTO_WAZ_CAW_WAU",
+      "brand": "TAG Heuer",
+      "family": "Formula 1",
+      "model_keywords": ["formula 1", "waz", "caw", "wau"],
+      "query": "TAG Heuer Formula 1 automatic WAZ OR CAW OR WAU",
+      "risk": "medium",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 900, "p75": 1050, "notes": "p75 especialmente en chrono CAW + full set" },
+      "max_buy_eur": 700,
+      "must_include": ["tag", "heuer"],
+      "must_exclude": ["connected", "smartwatch", "quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "TAG_CARRERA_AUTO_CALIBRE",
+      "brand": "TAG Heuer",
+      "family": "Carrera",
       "model_keywords": ["carrera", "automatic", "calibre"],
       "query": "TAG Heuer Carrera automatic calibre",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 1500, "p75": 2200, "notes": "p75 full set/excellent" },
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 1550, "p75": 1900, "notes": "p75 en chrono calibre 16 + full set; no inflar por outliers" },
       "max_buy_eur": 1200,
       "must_include": ["tag", "heuer", "carrera"],
-      "must_exclude": ["quartz", "battery", "pile", "connected", "smartwatch", "replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["connected", "smartwatch", "quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "NOMOS_TANGENTE_CLUB",
-      "brand": "NOMOS",
-      "model_keywords": ["tangente", "club", "metro"],
-      "query": "NOMOS Tangente OR NOMOS Club OR NOMOS Metro",
+      "id": "TISSOT_SEASTAR_POWERMATIC80",
+      "brand": "Tissot",
+      "family": "Seastar",
+      "model_keywords": ["seastar", "powermatic 80"],
+      "query": "Tissot Seastar Powermatic 80",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 1300, "p75": 1800, "notes": "p75 full set/mint" },
-      "max_buy_eur": 1050,
-      "must_include": ["nomos"],
-      "must_exclude": ["quartz", "battery", "pile", "replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 700, "p75": 830, "notes": "evitar Seastar quartz" },
+      "max_buy_eur": 520,
+      "must_include": ["tissot", "seastar"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "TISSOT_PRX_POWERMATIC80_40MM",
+      "brand": "Tissot",
+      "family": "PRX",
+      "model_keywords": ["prx", "powermatic 80"],
+      "query": "Tissot PRX Powermatic 80 40mm",
+      "risk": "medium",
+      "liquidity": "very-high",
+      "catawiki_estimate": { "p50": 620, "p75": 720, "notes": "40mm; no mezclar quartz ni 35mm" },
+      "max_buy_eur": 460,
+      "must_include": ["tissot", "prx"],
+      "must_exclude": ["quartz", "battery", "pile", "35mm", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "HAM_KHAKI_FIELD_AUTO",
+      "brand": "Hamilton",
+      "family": "Khaki Field",
+      "model_keywords": ["khaki", "field", "automatic"],
+      "query": "Hamilton Khaki Field automatic",
+      "risk": "low",
+      "liquidity": "very-high",
+      "catawiki_estimate": { "p50": 560, "p75": 650, "notes": "p75 full set + 38–40mm + estado top" },
+      "max_buy_eur": 420,
+      "must_include": ["hamilton", "khaki"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "HAM_MURPH_AUTO",
+      "brand": "Hamilton",
+      "family": "Murph",
+      "model_keywords": ["murph", "automatic"],
+      "query": "Hamilton Murph automatic",
+      "risk": "low",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 820, "p75": 950, "notes": "p75 en 38mm + full set" },
+      "max_buy_eur": 650,
+      "must_include": ["hamilton", "murph"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "CERTINA_DS_ACTION_POWERMATIC80",
+      "brand": "Certina",
+      "family": "DS Action",
+      "model_keywords": ["ds action", "powermatic 80"],
+      "query": "Certina DS Action Powermatic 80",
+      "risk": "low",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 560, "p75": 680, "notes": "p75 full set + 38–40mm mejor valoradas" },
+      "max_buy_eur": 420,
+      "must_include": ["certina", "ds action"],
+      "must_exclude": ["quartz", "battery", "pile", "gmt", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "SEIKO_ALPINIST_SARB017_SPB121",
+      "brand": "Seiko",
+      "family": "Alpinist",
+      "model_keywords": ["alpinist", "sarb017", "spb121"],
+      "query": "Seiko Alpinist SARB017 OR SPB121",
+      "risk": "medium",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 620, "p75": 760, "notes": "p75 especialmente SARB017 + full set + estado top" },
+      "max_buy_eur": 450,
+      "must_include": ["seiko", "alpinist"],
+      "must_exclude": ["quartz", "battery", "pile", "kinetic", "solar", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "SEIKO_PROSPEX_TURTLE_AUTO",
+      "brand": "Seiko",
+      "family": "Prospex Turtle",
+      "model_keywords": ["turtle", "srp", "srpa", "srpb", "srpc", "srpe", "prospex"],
+      "query": "Seiko Prospex Turtle SRP",
+      "risk": "medium",
+      "liquidity": "very-high",
+      "catawiki_estimate": { "p50": 520, "p75": 650, "notes": "no mezclar LE raras; evitar kinetic/solar" },
+      "max_buy_eur": 380,
+      "must_include": ["seiko"],
+      "must_exclude": ["quartz", "battery", "pile", "kinetic", "solar", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "SEIKO_PROSPEX_SAMURAI_AUTO",
+      "brand": "Seiko",
+      "family": "Prospex Samurai",
+      "model_keywords": ["samurai", "srpb", "srpc", "srpd", "prospex"],
+      "query": "Seiko Prospex Samurai",
+      "risk": "medium",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 480, "p75": 600, "notes": "margen sensible; entrar barato" },
+      "max_buy_eur": 350,
+      "must_include": ["seiko"],
+      "must_exclude": ["quartz", "battery", "pile", "kinetic", "solar", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "OMEGA_DEVILLE_VTG_AUTO",
+      "brand": "Omega",
+      "family": "De Ville (vintage)",
+      "model_keywords": ["de ville", "automatic", "vintage"],
+      "query": "Omega De Ville automatic vintage",
+      "risk": "medium",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 520, "p75": 680, "notes": "p75 solo dial original + servicio; evitar redials y tamaños pequeños" },
+      "max_buy_eur": 380,
+      "must_include": ["omega", "de ville"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "boîtier", "dial", "cadran"]
+    },
+
+    {
+      "id": "OMEGA_SEAMASTER_VTG_AUTO",
+      "brand": "Omega",
+      "family": "Seamaster (vintage)",
+      "model_keywords": ["seamaster", "automatic", "vintage"],
+      "query": "Omega Seamaster vintage automatic",
+      "risk": "medium",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 720, "p75": 950, "notes": "p75 dial original + 35–36mm + servicio; evitar redials/chapados" },
+      "max_buy_eur": 540,
+      "must_include": ["omega", "seamaster"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "OMEGA_AQUA_TERRA_AUTO",
+      "brand": "Omega",
+      "family": "Aqua Terra",
+      "model_keywords": ["aqua terra", "automatic"],
+      "query": "Omega Aqua Terra automatic",
+      "risk": "medium",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 1850, "p75": 2300, "notes": "p75 full set + Co-Axial 8500/8900 + estado top" },
+      "max_buy_eur": 1450,
+      "must_include": ["omega", "aqua terra"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "ZENITH_VTG_AUTO_GENERIC",
+      "brand": "Zenith",
+      "family": "Vintage Automatic (generic)",
+      "model_keywords": ["zenith", "vintage", "automatic"],
+      "query": "Zenith vintage automatic",
+      "risk": "medium",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 720, "p75": 950, "notes": "p75 solo dial original + 35–36mm + servicio" },
+      "max_buy_eur": 540,
+      "must_include": ["zenith", "automatic"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "boîtier", "dial", "cadran"]
+    },
+
+    {
+      "id": "TUDOR_1926_AUTO",
+      "brand": "Tudor",
+      "family": "1926",
+      "model_keywords": ["1926", "automatic"],
+      "query": "Tudor 1926 automatic",
+      "risk": "low",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 1050, "p75": 1250, "notes": "p75 full set + 41mm + poco uso" },
+      "max_buy_eur": 820,
+      "must_include": ["tudor", "1926"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "TUDOR_GLAMOUR_AUTO",
+      "brand": "Tudor",
+      "family": "Glamour",
+      "model_keywords": ["glamour", "automatic"],
+      "query": "Tudor Glamour automatic",
+      "risk": "low",
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 1150, "p75": 1350, "notes": "p75 full set + tamaño moderno + estado fuerte" },
+      "max_buy_eur": 900,
+      "must_include": ["tudor", "glamour"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "TUDOR_BLACK_BAY",
+      "brand": "Tudor",
+      "family": "Black Bay",
+      "model_keywords": ["black bay"],
+      "query": "Tudor Black Bay",
+      "risk": "medium",
+      "liquidity": "very-high",
+      "catawiki_estimate": { "p50": 2600, "p75": 3100, "notes": "p75 in-house + full set + estado top" },
+      "max_buy_eur": 2100,
+      "must_include": ["tudor", "black bay"],
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "BREITLING_COLT_AUTO",
+      "brand": "Breitling",
+      "family": "Colt",
+      "model_keywords": ["colt", "automatic"],
+      "query": "Breitling Colt automatic",
+      "risk": "medium",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 1450, "p75": 1750, "notes": "no mezclar Colt quartz; p75 full set/estado fuerte" },
+      "max_buy_eur": 1100,
+      "must_include": ["breitling", "colt"],
+      "must_exclude": ["quartz", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "NOMOS_TANGENTE",
+      "brand": "NOMOS",
+      "family": "Tangente",
+      "model_keywords": ["tangente"],
+      "query": "NOMOS Tangente",
+      "risk": "medium",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 1100, "p75": 1300, "notes": "p75 full set + 38mm + dial blanco clásico" },
+      "max_buy_eur": 850,
+      "must_include": ["nomos", "tangente"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "NOMOS_CLUB",
+      "brand": "NOMOS",
+      "family": "Club",
+      "model_keywords": ["club"],
+      "query": "NOMOS Club",
+      "risk": "medium",
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 1050, "p75": 1250, "notes": "p75 colores deportivos + 38–40mm + full set" },
+      "max_buy_eur": 800,
+      "must_include": ["nomos", "club"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "NOMOS_METRO",
+      "brand": "NOMOS",
+      "family": "Metro",
+      "model_keywords": ["metro"],
+      "query": "NOMOS Metro",
+      "risk": "medium",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 1300, "p75": 1500, "notes": "menos demanda que Tangente/Club; p75 con set y estado top" },
+      "max_buy_eur": 1000,
+      "must_include": ["nomos", "metro"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
       "id": "MAURICE_LACROIX_AIKON_AUTO",
       "brand": "Maurice Lacroix",
+      "family": "Aikon",
       "model_keywords": ["aikon", "automatic"],
       "query": "Maurice Lacroix Aikon automatic",
       "risk": "low",
-      "catawiki_estimate": { "p50": 800, "p75": 1050, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 650,
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 1100, "p75": 1300, "notes": "p75 full set + esfera azul + buen brazalete" },
+      "max_buy_eur": 850,
       "must_include": ["maurice", "lacroix", "aikon"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "MIDO_OCEAN_STAR",
+      "id": "MIDO_OCEAN_STAR_AUTO",
       "brand": "Mido",
+      "family": "Ocean Star",
       "model_keywords": ["ocean star", "automatic"],
       "query": "Mido Ocean Star automatic",
       "risk": "low",
-      "catawiki_estimate": { "p50": 700, "p75": 950, "notes": "p75 full set/mint" },
-      "max_buy_eur": 550,
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 750, "p75": 900, "notes": "p75 full set + bisel/cristal limpios" },
+      "max_buy_eur": 575,
       "must_include": ["mido", "ocean star"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "RADO_CAPTAIN_COOK",
+      "id": "RADO_CAPTAIN_COOK_AUTO",
       "brand": "Rado",
+      "family": "Captain Cook",
       "model_keywords": ["captain cook", "automatic"],
       "query": "Rado Captain Cook automatic",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 1200, "p75": 1600, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 950,
+      "liquidity": "high",
+      "catawiki_estimate": { "p50": 1450, "p75": 1750, "notes": "p75 full set + look vintage + estado fuerte" },
+      "max_buy_eur": 1100,
       "must_include": ["rado", "captain cook"],
-      "must_exclude": ["quartz", "battery", "pile", "replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "DOXA_SUB",
+      "id": "DOXA_SUB_AUTO",
       "brand": "Doxa",
+      "family": "SUB",
       "model_keywords": ["sub", "automatic"],
       "query": "Doxa SUB automatic",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 1500, "p75": 2100, "notes": "good demand; ensure authenticity" },
-      "max_buy_eur": 1200,
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 1600, "p75": 2000, "notes": "muy sensible a estética/dial; p75 en naranja/negro + set" },
+      "max_buy_eur": 1250,
       "must_include": ["doxa", "sub"],
-      "must_exclude": ["replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "FORTIS_B42_BAUMUSTER",
+      "id": "FORTIS_B42_AUTO",
       "brand": "Fortis",
-      "model_keywords": ["b-42", "b42", "flieger", "cosmonauts"],
-      "query": "Fortis B42 OR Fortis Cosmonauts",
+      "family": "B-42",
+      "model_keywords": ["b-42", "b42"],
+      "query": "Fortis B-42",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 900, "p75": 1300, "notes": "solid closes; p75 full set/excellent" },
-      "max_buy_eur": 750,
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 1050, "p75": 1250, "notes": "p75 full set/estado fuerte" },
+      "max_buy_eur": 800,
       "must_include": ["fortis"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "GLYCINE_AIRMAN",
+      "id": "FORTIS_COSMONAUTS_AUTO",
+      "brand": "Fortis",
+      "family": "Cosmonauts",
+      "model_keywords": ["cosmonauts", "cosmonaut"],
+      "query": "Fortis Cosmonauts",
+      "risk": "medium",
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 1300, "p75": 1500, "notes": "nicho; p75 si set fuerte/historia" },
+      "max_buy_eur": 1000,
+      "must_include": ["fortis", "cosmo"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "GLYCINE_AIRMAN_AUTO",
       "brand": "Glycine",
+      "family": "Airman",
       "model_keywords": ["airman", "automatic"],
       "query": "Glycine Airman automatic",
       "risk": "low",
-      "catawiki_estimate": { "p50": 650, "p75": 900, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 500,
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 780, "p75": 950, "notes": "marca infravalorada; p75 con GMT/estado top" },
+      "max_buy_eur": 600,
       "must_include": ["glycine", "airman"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "ALPINA_STARTIMER",
+      "id": "ALPINA_STARTIMER_AUTO",
       "brand": "Alpina",
+      "family": "Startimer",
       "model_keywords": ["startimer", "automatic"],
       "query": "Alpina Startimer automatic",
       "risk": "low",
-      "catawiki_estimate": { "p50": 650, "p75": 900, "notes": "pilot models; p75 full set/excellent" },
-      "max_buy_eur": 520,
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 900, "p75": 1050, "notes": "pilot; p75 full set/estado fuerte" },
+      "max_buy_eur": 700,
       "must_include": ["alpina", "startimer"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "YEMA_SUPERMAN",
+      "id": "YEMA_SUPERMAN_AUTO",
       "brand": "Yema",
+      "family": "Superman",
       "model_keywords": ["superman", "automatic"],
       "query": "Yema Superman automatic",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 700, "p75": 950, "notes": "avoid aftermarket/parts" },
-      "max_buy_eur": 550,
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 820, "p75": 1000, "notes": "percepción desigual; p75 en refs recientes + set" },
+      "max_buy_eur": 625,
       "must_include": ["yema", "superman"],
-      "must_exclude": ["replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "ZODIAC_SEA_WOLF",
+      "id": "ZODIAC_SEA_WOLF_AUTO",
       "brand": "Zodiac",
+      "family": "Sea Wolf",
       "model_keywords": ["sea wolf", "seawolf", "automatic"],
       "query": "Zodiac Sea Wolf automatic",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 850, "p75": 1150, "notes": "good demand; p75 full set/excellent" },
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 850, "p75": 1050, "notes": "p75 full set/estado fuerte; ojo dispersión de refs" },
       "max_buy_eur": 650,
       "must_include": ["zodiac", "sea wolf"],
-      "must_exclude": ["replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "MONTBLANC_1858_ICES_SEA",
+      "id": "MONTBLANC_1858",
       "brand": "Montblanc",
-      "model_keywords": ["1858", "iced sea", "ices sea", "automatic"],
-      "query": "Montblanc 1858 OR Montblanc Iced Sea",
+      "family": "1858",
+      "model_keywords": ["1858"],
+      "query": "Montblanc 1858",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 1600, "p75": 2200, "notes": "p75 full set/excellent" },
-      "max_buy_eur": 1300,
-      "must_include": ["montblanc"],
-      "must_exclude": ["replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 1800, "p75": 2200, "notes": "p75 full set + estado top" },
+      "max_buy_eur": 1400,
+      "must_include": ["montblanc", "1858"],
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "MEISTERSINGER_NO1_N1",
+      "id": "MONTBLANC_ICED_SEA",
+      "brand": "Montblanc",
+      "family": "Iced Sea",
+      "model_keywords": ["iced sea", "ice sea", "iced-sea"],
+      "query": "Montblanc Iced Sea",
+      "risk": "medium",
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 2200, "p75": 2600, "notes": "p75 full set/estado muy fuerte" },
+      "max_buy_eur": 1750,
+      "must_include": ["montblanc"],
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "MEISTERSINGER_NO1",
       "brand": "Meistersinger",
-      "model_keywords": ["meistersinger", "no.", "n1", "n2", "neo"],
-      "query": "Meistersinger No. 1 OR Meistersinger Neo",
+      "family": "No.1",
+      "model_keywords": ["no.1", "no 1", "n1"],
+      "query": "Meistersinger No.1",
       "risk": "low",
-      "catawiki_estimate": { "p50": 900, "p75": 1250, "notes": "niche but liquid; p75 full set/excellent" },
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 900, "p75": 1100, "notes": "nicho (una aguja); p75 con set/estética top" },
       "max_buy_eur": 700,
       "must_include": ["meistersinger"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "STOWA_FLIEGER",
+      "id": "MEISTERSINGER_NEO",
+      "brand": "Meistersinger",
+      "family": "Neo",
+      "model_keywords": ["neo"],
+      "query": "Meistersinger Neo",
+      "risk": "low",
+      "liquidity": "medium",
+      "catawiki_estimate": { "p50": 900, "p75": 1100, "notes": "mismo comportamiento; p75 full set/estado top" },
+      "max_buy_eur": 700,
+      "must_include": ["meistersinger", "neo"],
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
+    },
+
+    {
+      "id": "STOWA_FLIEGER_AUTO",
       "brand": "Stowa",
+      "family": "Flieger",
       "model_keywords": ["flieger", "automatic"],
       "query": "Stowa Flieger automatic",
       "risk": "low",
-      "catawiki_estimate": { "p50": 900, "p75": 1200, "notes": "good demand; p75 full set/excellent" },
-      "max_buy_eur": 700,
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 1100, "p75": 1300, "notes": "p75 full set/estado fuerte" },
+      "max_buy_eur": 850,
       "must_include": ["stowa"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "LACO_PILOT",
+      "id": "LACO_FLIEGER_AUTO",
       "brand": "Laco",
-      "model_keywords": ["laco", "pilot", "flieger", "automatic"],
+      "family": "Flieger / Pilot",
+      "model_keywords": ["flieger", "pilot", "automatic"],
       "query": "Laco flieger automatic",
       "risk": "low",
-      "catawiki_estimate": { "p50": 650, "p75": 900, "notes": "avoid cheap quartz lines" },
-      "max_buy_eur": 520,
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 800, "p75": 1000, "notes": "evitar líneas quartz baratas" },
+      "max_buy_eur": 600,
       "must_include": ["laco"],
-      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["quartz", "battery", "pile", "case", "cassa", "boitier", "dial", "cadran"]
     },
 
     {
-      "id": "DAMASKO_DA",
+      "id": "DAMASKO_DA_DC_AUTO",
       "brand": "Damasko",
+      "family": "DA / DC",
       "model_keywords": ["da", "dc", "automatic"],
       "query": "Damasko DA OR Damasko DC automatic",
       "risk": "medium",
-      "catawiki_estimate": { "p50": 1300, "p75": 1700, "notes": "toolwatch demand; p75 full set/excellent" },
-      "max_buy_eur": 1050,
+      "liquidity": "medium-high",
+      "catawiki_estimate": { "p50": 1450, "p75": 1750, "notes": "p75 full set; acero endurecido sin marcas es clave" },
+      "max_buy_eur": 1100,
       "must_include": ["damasko"],
-      "must_exclude": ["replica", "copy", "imitacion", "imitation", "case", "cassa", "boitier", "dial", "cadran", "parts", "spares", "repair", "non funciona", "non funciona", "for parts"]
+      "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
     }
   ]
 }
