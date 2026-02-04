@@ -18,7 +18,9 @@ CC_THROTTLE_S = float(os.getenv("CC_THROTTLE_S", "0.8"))
 CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "500"))
 CC_GOOD_BRANDS_TARGET = int(os.getenv("CC_GOOD_BRANDS_TARGET", "60"))
 
-MIN_MATCH_SCORE = int(os.getenv("CC_MIN_MATCH_SCORE", "65"))
+# ↓ Ajuste clave: por defecto CC necesita umbral más bajo (títulos pobres)
+MIN_MATCH_SCORE = int(os.getenv("CC_MIN_MATCH_SCORE", "55"))
+
 MIN_NET_EUR = float(os.getenv("CC_MIN_NET_EUR", "20"))
 MIN_NET_ROI = float(os.getenv("CC_MIN_NET_ROI", "0.08"))
 CLOSE_HAIRCUT = float(os.getenv("CLOSE_HAIRCUT", "0.90"))
@@ -72,6 +74,10 @@ BANNED_KEYWORDS_TITLE = {
 
 PRICE_RE = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*€")
 ID_RE = re.compile(r"/segunda-mano/([^/]+)\.html")
+
+# Heurísticas de referencias típicas
+REF_RE = re.compile(r"\b([A-Z]{1,4}\d{3,6}[A-Z]?)\b")                  # WAZ1110, SARB033, etc.
+TISSOT_REF_RE = re.compile(r"\bT\d{3}\.\d{3}\.\d{2}\.\d{3}\.\d{2}\b", re.I)  # T137.407.11.041.00
 
 def canon(s: str) -> str:
     s = (s or "").lower()
@@ -163,10 +169,14 @@ def parse_detail_page(url: str) -> Dict[str, Any]:
             shop = s.strip()
             break
 
+    # Extra: breadcrumbs/categorías suelen aportar marca/ref
+    crumbs = " ".join([c.get_text(" ", strip=True) for c in soup.select("nav.breadcrumb li, ol.breadcrumb li, .breadcrumb li")])
+    enriched = " ".join([title, crumbs, text])
+
     return {
         "url": url,
         "title": title,
-        "text": text,
+        "enriched": enriched,
         "price": price,
         "shop": shop,
         "page_ok": page_ok
@@ -183,20 +193,10 @@ def _as_list(v: Any) -> List[str]:
     return []
 
 def _to_float(v: Any) -> float:
-    """
-    Convierte a float de forma robusta:
-    - números -> float
-    - strings "1.234,56 €" -> 1234.56
-    - listas -> primer num válido
-    - dicts -> intenta claves típicas (median/mid/p50/avg/mean/estimate/base)
-              si no, toma el máximo numérico encontrado.
-    """
     if v is None:
         return 0.0
-
     if isinstance(v, (int, float)):
         return float(v)
-
     if isinstance(v, str):
         vv = v.strip().replace("€", "").strip()
         vv = vv.replace(".", "").replace(",", ".")
@@ -204,43 +204,32 @@ def _to_float(v: Any) -> float:
             return float(vv)
         except Exception:
             return 0.0
-
     if isinstance(v, list):
         for it in v:
             f = _to_float(it)
             if f > 0:
                 return f
         return 0.0
-
     if isinstance(v, dict):
-        # claves típicas
-        preferred_keys = ["mid", "median", "p50", "avg", "mean", "estimate", "base", "value", "close"]
+        preferred_keys = ["p50", "mid", "median", "p75", "avg", "mean", "estimate", "base", "value", "close"]
         for k in preferred_keys:
             if k in v:
                 f = _to_float(v.get(k))
                 if f > 0:
                     return f
-
-        # si no hay claves típicas, coge el máximo numérico dentro del dict
         mx = 0.0
         for _, vv in v.items():
             f = _to_float(vv)
             if f > mx:
                 mx = f
         return mx
-
     return 0.0
 
 def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], str]:
-    """
-    Tu esquema (según keys_sample):
-      brand, id, catawiki_estimate, model_keywords, must_include, must_exclude, query, risk, max_buy_eur
-    """
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     diag_parts = [f"type:{type(data).__name__}"]
-
     items: List[Any] = []
     if isinstance(data, dict) and "targets" in data and isinstance(data["targets"], list):
         items = data["targets"]
@@ -252,7 +241,6 @@ def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], 
     valid: List[Dict[str, Any]] = []
     sample_keys = set()
 
-    # diagnóstico adicional: cómo viene catawiki_estimate realmente
     estimate_type = ""
     estimate_preview = ""
 
@@ -277,6 +265,7 @@ def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], 
         base = _to_float(raw_est)
 
         model_keywords = _as_list(it.get("model_keywords"))
+        ref_keywords = _as_list(it.get("ref_keywords"))  # opcional
         must_include = _as_list(it.get("must_include"))
         must_exclude = _as_list(it.get("must_exclude"))
 
@@ -288,6 +277,7 @@ def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], 
                 "brand": brand,
                 "base_close_eur": base,
                 "keywords": model_keywords,
+                "ref_keywords": ref_keywords,
                 "must_include": must_include,
                 "must_exclude": must_exclude,
                 "fake_risk": risk,
@@ -304,45 +294,66 @@ def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], 
 
     return valid, " | ".join(diag_parts)
 
-def passes_must_rules(title: str, trg: Dict[str, Any]) -> bool:
-    t = canon(title)
-
+def passes_must_rules(text: str, trg: Dict[str, Any]) -> bool:
+    t = canon(text)
     for kw in (trg.get("must_exclude") or []):
         k = canon(str(kw))
         if k and k in t:
             return False
-
     inc = trg.get("must_include") or []
     if inc:
         for kw in inc:
             k = canon(str(kw))
             if k and k not in t:
                 return False
-
     return True
 
-def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], int]:
-    t = canon(title)
+def best_target(text: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], int]:
+    t = canon(text)
     best = None
     best_score = -1
 
+    # heurística: detecta ref de producto en el texto CC
+    has_tissot_ref = bool(TISSOT_REF_RE.search(text or ""))
+    generic_refs = set([m.group(1).lower() for m in REF_RE.finditer(text or "")])  # WAZ1110, etc.
+
     for trg in targets:
-        if not passes_must_rules(title, trg):
+        if not passes_must_rules(text, trg):
             continue
 
         score = 0
+
         brand = canon(trg.get("brand", ""))
         if brand and brand in t:
             score += 60
 
+        # keywords de modelo
         for kw in (trg.get("keywords") or []):
             kwc = canon(str(kw))
             if kwc and kwc in t:
-                score += 10
+                score += 12
 
+        # keywords de referencia (opcionales)
+        for rk in (trg.get("ref_keywords") or []):
+            rkc = canon(str(rk))
+            if rkc and rkc in t:
+                score += 25
+
+        # bonus si el target es Tissot y hay ref Txxx.xxx...
         tid = canon(trg.get("id", ""))
+        if "tissot" in brand and has_tissot_ref:
+            score += 25
+
+        # bonus genérico: si el id del target aparece tal cual (a veces)
         if tid and tid in t:
             score += 10
+
+        # bonus suave por refs tipo WAZ1110, SARB033, etc. (si coinciden con keywords)
+        # (si quieres afinar, mete esos códigos en ref_keywords de cada target)
+        if generic_refs and (trg.get("ref_keywords") or []):
+            for rk in trg["ref_keywords"]:
+                if str(rk).lower() in generic_refs:
+                    score += 25
 
         if score > best_score:
             best_score = score
@@ -412,10 +423,10 @@ def run() -> None:
                     continue
 
                 title = data.get("title", "")
-                text = data.get("text", "")
+                enriched = data.get("enriched", title)
                 buy = float(data.get("price") or 0.0)
 
-                brand, cls = detect_brand_from_text(title + " " + text)
+                brand, cls = detect_brand_from_text(enriched)
                 if cls == "banned":
                     c_ban += 1
                     continue
@@ -427,7 +438,7 @@ def run() -> None:
                 if title_has_banned_keywords(title):
                     continue
 
-                trg, match = best_target(title, targets)
+                trg, match = best_target(enriched, targets)
                 if not trg or match < MIN_MATCH_SCORE:
                     continue
                 c_match_ok += 1
