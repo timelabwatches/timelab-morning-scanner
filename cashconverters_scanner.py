@@ -178,9 +178,7 @@ def _to_float(v: Any) -> float:
     if isinstance(v, (int, float)):
         return float(v)
     if isinstance(v, str):
-        vv = v.strip()
-        # permite "650", "650.0", "650,00"
-        vv = vv.replace("€", "").strip()
+        vv = v.strip().replace("€", "").strip()
         vv = vv.replace(".", "").replace(",", ".")
         try:
             return float(vv)
@@ -188,25 +186,20 @@ def _to_float(v: Any) -> float:
             return 0.0
     return 0.0
 
-def _pick_first(d: Dict[str, Any], keys: List[str]) -> Any:
-    for k in keys:
-        if k in d and d[k] is not None:
-            return d[k]
-    return None
+def _as_list(v: Any) -> List[str]:
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return [str(x) for x in v if str(x).strip()]
+    if isinstance(v, str):
+        s = v.strip()
+        return [s] if s else []
+    return []
 
 def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], str]:
     """
-    Devuelve (targets, diag_text).
-    Soporta múltiples formatos:
-      - [ {...}, {...} ]
-      - { "targets": [ {...} ] }
-      - { "TISSOT_PRX_AUTO": {...}, "OMEGA_SEAMASTER": {...} }  (mapa)
-    Soporta claves alternativas para base close:
-      base_close_eur, base_close, baseClose, close, close_eur, catawiki_close, catawiki_close_eur, base
-    Soporta brand en:
-      brand, make, manufacturer
-    Soporta id en:
-      id, target, name, key (si venía como dict-map)
+    Tu esquema real (según keys_sample):
+      brand, id, catawiki_estimate, model_keywords, must_include, must_exclude, query, risk, max_buy_eur
     """
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -214,24 +207,12 @@ def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], 
     diag_parts = [f"type:{type(data).__name__}"]
 
     items: List[Any] = []
-    if isinstance(data, dict):
-        if "targets" in data and isinstance(data["targets"], list):
-            items = data["targets"]
-            diag_parts.append("shape:{targets:[...]}")
-        else:
-            # dict-map: id -> obj
-            items = []
-            for k, v in data.items():
-                if isinstance(v, dict):
-                    vv = dict(v)
-                    vv["_key_from_map"] = k
-                    items.append(vv)
-            diag_parts.append("shape:{id:{...}}")
-    elif isinstance(data, list):
-        items = data
-        diag_parts.append("shape:[...]")
+    if isinstance(data, dict) and "targets" in data and isinstance(data["targets"], list):
+        items = data["targets"]
+        diag_parts.append("shape:{targets:[...]}")
     else:
-        return [], " | ".join(diag_parts) + " | unsupported"
+        diag_parts.append("shape:unknown")
+        return [], " | ".join(diag_parts) + " | expected {targets:[...]}"
 
     valid: List[Dict[str, Any]] = []
     sample_keys = set()
@@ -239,72 +220,90 @@ def load_targets(path: str = "target_list.json") -> Tuple[List[Dict[str, Any]], 
     for it in items:
         if not isinstance(it, dict):
             continue
-
         for k in it.keys():
             sample_keys.add(str(k))
 
-        tid = _pick_first(it, ["id", "target", "name"])
-        if not tid:
-            tid = it.get("_key_from_map", "")
-        tid = str(tid).strip()
+        tid = str(it.get("id") or "").strip()
+        brand = str(it.get("brand") or "").strip()
+        base = _to_float(it.get("catawiki_estimate"))
 
-        brand = _pick_first(it, ["brand", "make", "manufacturer"])
-        brand = str(brand).strip() if brand else ""
+        # keywords extra
+        model_keywords = _as_list(it.get("model_keywords"))
+        must_include = _as_list(it.get("must_include"))
+        must_exclude = _as_list(it.get("must_exclude"))
 
-        base_raw = _pick_first(it, [
-            "base_close_eur", "base_close", "baseClose",
-            "close", "close_eur",
-            "catawiki_close", "catawiki_close_eur",
-            "base", "baseCloseEur"
-        ])
-        base = _to_float(base_raw)
+        risk = str(it.get("risk") or "low").lower().strip()
 
-        keywords = it.get("keywords") or it.get("kw") or it.get("tags") or []
-        if isinstance(keywords, str):
-            keywords = [keywords]
-        if not isinstance(keywords, list):
-            keywords = []
-
-        fake_risk = (it.get("fake_risk") or it.get("risk") or "low")
-        fake_risk = str(fake_risk).lower()
-
-        # VALIDACIÓN mínima (más laxa, pero útil)
-        # - id requerido
-        # - brand requerido
-        # - base_close > 0 requerido (si no, no podemos estimar net)
+        # validación mínima
         if tid and brand and base > 0:
             valid.append({
                 "id": tid,
                 "brand": brand,
-                "base_close_eur": base,
-                "keywords": keywords,
-                "fake_risk": fake_risk,
+                "base_close_eur": base,          # normalizado
+                "keywords": model_keywords,      # normalizado
+                "must_include": must_include,
+                "must_exclude": must_exclude,
+                "fake_risk": risk,               # normalizado
             })
 
     diag_parts.append(f"items:{len(items)}")
     diag_parts.append(f"valid:{len(valid)}")
     if sample_keys:
-        ks = sorted(list(sample_keys))[:25]
-        diag_parts.append("keys_sample:" + ",".join(ks))
+        diag_parts.append("keys_sample:" + ",".join(sorted(list(sample_keys))[:25]))
 
     return valid, " | ".join(diag_parts)
+
+def passes_must_rules(title: str, trg: Dict[str, Any]) -> bool:
+    """
+    must_include: todas deben aparecer (si existe)
+    must_exclude: ninguna debe aparecer
+    """
+    t = canon(title)
+
+    for kw in (trg.get("must_exclude") or []):
+        k = canon(str(kw))
+        if k and k in t:
+            return False
+
+    inc = trg.get("must_include") or []
+    if inc:
+        for kw in inc:
+            k = canon(str(kw))
+            if k and k not in t:
+                return False
+
+    return True
 
 def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], int]:
     t = canon(title)
     best = None
     best_score = -1
+
     for trg in targets:
+        # must rules
+        if not passes_must_rules(title, trg):
+            continue
+
         score = 0
         brand = canon(trg.get("brand", ""))
         if brand and brand in t:
             score += 60
+
+        # keywords de modelo
         for kw in (trg.get("keywords") or []):
             kwc = canon(str(kw))
             if kwc and kwc in t:
                 score += 10
+
+        # pequeño bonus si el id aparece (a veces id contiene ref/modelo)
+        tid = canon(trg.get("id", ""))
+        if tid and tid in t:
+            score += 10
+
         if score > best_score:
             best_score = score
             best = trg
+
     return best, max(0, best_score)
 
 def estimate_close(trg: Dict[str, Any]) -> float:
@@ -323,13 +322,11 @@ def estimate_net(buy: float, shipping: float, close: float) -> Tuple[float, floa
 
 def run() -> None:
     targets, diag = load_targets("target_list.json")
-
-    # ✅ NO CRASH: si targets inválidos, avisamos por Telegram y salimos limpio
     if not targets:
         tg_send(
             "❌ TIMELAB CashConverters scanner: target_list.json inválido (no se pudieron cargar targets válidos)\n\n"
             f"diag: {diag}\n\n"
-            "Acción: revisa el formato o pásame una captura/pegado del inicio de target_list.json (primeros 30-50 lines) y lo adapto."
+            "Acción: revisa el formato (debe ser {targets:[...]}) o pásame 30-50 líneas del archivo."
         )
         return
 
