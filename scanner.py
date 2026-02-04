@@ -2,20 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 TIMELAB — eBay wristwatch scanner (improved version)
-This script scans eBay for watch listings and matches them against a curated
-target list. It aims to surface watches with a good arbitrage opportunity
-for resale on Catawiki. The code is tuned for low‑ and medium‑risk models
-only and adds several improvements over the prior version:
 
-* Adds hard exclusion terms (e.g. instruction manuals, booklets) to avoid
-  false positives such as manuals or booklets misidentified as watches.
-* Raises the minimum match threshold (default 60) to reduce noise from
-  generic listings.
-* Adds more robust text normalization and global negative filters.
-* Supports 72‑hour cooldown between reposts and reposts only if price
-  drops by ≥10 %.
-* Saves and loads state between runs in `state_ebay.json`.
-* Incorporates an expanded target list with additional brands/models.
+Fixes included (v5 hotfix):
+1) Global hard-reject for accessories (straps/bracelets/links/clasps/manuals/etc.) to avoid false positives.
+2) Global hard-reject for "movement only / for parts" listings (movements, parts, spares).
+3) Correct "Reposted(price drop)" metric (now counts only true reposts allowed by price drop during cooldown).
+4) Prints target_list.json version + target count in Telegram header (so you can verify Actions is using the right file).
+5) Shipping enrichment: chooses MIN shipping cost in EUR across shippingOptions (not the first option).
+6) Adds Spanish "cuarzo" (and a few variants) into contradictions / bad terms.
 
 Environment variables:
   TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID  — Telegram credentials
@@ -61,7 +55,7 @@ import requests
 
 def env_float(name: str, default: float) -> float:
     try:
-        return float(str(os.getenv(name, str(default))).replace(',', '.'))
+        return float(str(os.getenv(name, str(default))).replace(",", "."))
     except Exception:
         return default
 
@@ -72,12 +66,12 @@ def env_int(name: str, default: int) -> int:
         return default
 
 def env_set(name: str, default: str) -> Set[str]:
-    return {x.strip().lower() for x in os.getenv(name, default).split(',') if x.strip()}
+    return {x.strip().lower() for x in os.getenv(name, default).split(",") if x.strip()}
 
 # Profit and match thresholds
 MIN_NET_EUR = env_float("MIN_NET_EUR", 20.0)
 MIN_NET_ROI = env_float("MIN_NET_ROI", 0.05)
-MIN_MATCH_SCORE = env_int("MIN_MATCH_SCORE", 60)  # Raised from 50 → 60
+MIN_MATCH_SCORE = env_int("MIN_MATCH_SCORE", 60)
 ALLOW_FAKE_RISK = env_set("ALLOW_FAKE_RISK", "low,medium")
 
 # Buy cap multiplier
@@ -102,7 +96,9 @@ EBAY_THROTTLE_S = env_float("EBAY_THROTTLE_S", 0.35)
 EBAY_DEFAULT_CATEGORY_ID = os.getenv("EBAY_DEFAULT_CATEGORY_ID", "31387").strip()
 DETAIL_FETCH_N = env_int("DETAIL_FETCH_N", 35)
 EBAY_DETAIL_THROTTLE_S = env_float("EBAY_DETAIL_THROTTLE_S", 0.20)
-EBAY_ALLOWED_CATEGORY_IDS = {x.strip() for x in os.getenv("EBAY_ALLOWED_CATEGORY_IDS", EBAY_DEFAULT_CATEGORY_ID).split(',') if x.strip()}
+EBAY_ALLOWED_CATEGORY_IDS = {
+    x.strip() for x in os.getenv("EBAY_ALLOWED_CATEGORY_IDS", EBAY_DEFAULT_CATEGORY_ID).split(",") if x.strip()
+}
 
 # Telegram
 TG_MAX_LEN = env_int("TG_MAX_LEN", 3500)
@@ -124,6 +120,37 @@ def norm(s: str) -> str:
 def norm_tokens(items: List[str]) -> List[str]:
     return [norm(x) for x in (items or []) if norm(x)]
 
+# Global accessory detection
+GLOBAL_ACCESSORY_TERMS: Set[str] = {
+    # straps/bracelets/buckles/clasps/links/tools
+    "strap", "band", "bracelet", "armband", "cinturino", "bracciale",
+    "correa", "pulsera", "brazalete",
+    "buckle", "hebilla", "fibbie", "fibbia",
+    "clasp", "deployant", "déployant", "faltschließe", "faltschliesse", "cierre", "cierres",
+    "links", "link", "eslabon", "eslabón", "eslabones", "endlink", "end link",
+    "spring bar", "springbar", "pasadores", "tool", "herramienta",
+    # manuals / documentation-only / accessories
+    "instruction", "instructions", "manual", "manuale", "booklet", "libretto",
+    "gebrauchsanleitung", "catalog", "catalogue", "catalogo",
+    # box-only signals (kept here too, but also in hard terms)
+    "box only", "only box", "solo caja", "caja sola", "caja solo",
+}
+
+WATCH_INDICATORS: Set[str] = {
+    "watch", "reloj", "orologio", "montre", "uhr",
+    "automatic", "automatik", "automatique",
+    "chronograph", "chrono", "gmt",
+    "date", "diver", "sub", "seamaster", "aquaracer", "hydroconquest",
+}
+
+ACCESSORY_CONTEXT_TERMS: Set[str] = {
+    # typical "for models" phrasing
+    "for", "para", "per", "für", "fur", "pour",
+    "models", "modelos", "modele", "modelli",
+    "fits", "compatible", "compatibile", "kompatibel",
+    "does not fit", "no se adapta", "non si adatta", "passt nicht",
+}
+
 # Hard negative terms: incomplete/hard parts, manuals, booklets, etc.
 INCOMPLETE_HARD_TERMS: Set[str] = {
     "sin mecanismo", "falta movimiento", "falta el movimiento", "caja vacía", "caja vacia",
@@ -135,7 +162,13 @@ INCOMPLETE_HARD_TERMS: Set[str] = {
     # manuals/instructions/booklets
     "instructions", "instruction", "manual", "manuale", "booklet", "libretto",
     "operation", "operating", "manuel", "gebrauchsanleitung", "catalogue", "catalogo",
-    "catalog", "book", "box only", "with box only", "caja solo"
+    "catalog", "book",
+    # box-only
+    "box only", "only box", "with box only", "solo caja", "caja sola", "caja solo",
+    # parts-only / movement-only / spares
+    "for parts", "parts only", "movement only", "only movement", "solo movimiento", "solo calibro", "solo calibre",
+    "spares", "ricambi", "pièces", "pieces", "pieza", "piezas", "ersatzteile",
+    "uhrwerk", "movimiento", "movement",
 }
 
 GLOBAL_HARD_BAD_TERMS: Set[str] = {
@@ -143,8 +176,14 @@ GLOBAL_HARD_BAD_TERMS: Set[str] = {
     "defect", "defective", "as is", "untested", "not tested",
     "no funciona", "averiado", "averiada", "sin funcionar",
     "non funziona", "guasto", "ne fonctionne pas", "defekt", "funktioniert nicht",
-    "missing", "replica", "copy", "imitacion", "imitación", "imitation", "fake",
-    "booklet", "manual", "instructions"
+    "missing",
+    "replica", "copy", "imitacion", "imitación", "imitation", "fake",
+    # common quartz Spanish
+    "cuarzo",
+    # manuals/booklets
+    "booklet", "manual", "instructions",
+    # parts signals
+    "for parts", "parts only", "movement only", "only movement", "solo movimiento",
 }
 
 GLOBAL_BOOST_TERMS: Set[str] = {
@@ -163,8 +202,10 @@ GLOBAL_BAD_TERMS: Set[str] = {
 
 # To weed out quartz when we want automatic only
 AUTO_CONTRADICTIONS: Set[str] = {
-    "quartz", "battery", "pile", "manual", "hand‑wound", "hand wound", "handwound",
-    "carica manuale", "a carica manuale", "remontage manuel", "handaufzug", "solar", "kinetic"
+    "quartz", "cuarzo", "battery", "pile",
+    "manual", "hand-wound", "hand wound", "handwound",
+    "carica manuale", "a carica manuale", "remontage manuel", "handaufzug",
+    "solar", "kinetic",
 }
 
 # Countries in EU (ISO2) for quick filter
@@ -180,11 +221,12 @@ def is_eu_location(loc: str) -> bool:
     if m:
         return m.group(1).upper() in EU_ISO2
     l = norm(loc)
-    # fallback if only country name spelled out
-    common = ["spain","españa","france","francia","germany","alemania","italy","italia","portugal",
-              "belgium","bélgica","netherlands","países bajos","austria","ireland","finland","sweden",
-              "denmark","poland","czech","slovakia","slovenia","croatia","hungary","romania","bulgaria",
-              "greece","luxembourg","latvia","lithuania","estonia","cyprus","malta"]
+    common = [
+        "spain","españa","france","francia","germany","alemania","italy","italia","portugal",
+        "belgium","bélgica","netherlands","países bajos","austria","ireland","finland","sweden",
+        "denmark","poland","czech","slovakia","slovenia","croatia","hungary","romania","bulgaria",
+        "greece","luxembourg","latvia","lithuania","estonia","cyprus","malta"
+    ]
     return any(c in l for c in common)
 
 def now_utc() -> str:
@@ -193,7 +235,7 @@ def now_utc() -> str:
 def load_state() -> Dict[str, Dict[str, float]]:
     if os.path.exists(STATE_PATH):
         try:
-            with open(STATE_PATH, 'r', encoding='utf-8') as f:
+            with open(STATE_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return {}
@@ -201,15 +243,33 @@ def load_state() -> Dict[str, Dict[str, float]]:
 
 def save_state(state: Dict[str, Dict[str, float]]) -> None:
     try:
-        with open(STATE_PATH, 'w', encoding='utf-8') as f:
+        with open(STATE_PATH, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
     except Exception:
         pass
 
-def apply_cooldown(item_id: str, price: float, state: Dict[str, Dict[str, float]]) -> bool:
-    """Return True if the item should be suppressed due to cooldown.
+def is_repost_due_to_price_drop(item_id: str, price: float, state: Dict[str, Dict[str, float]]) -> bool:
+    """
+    True only if:
+      - item exists in state
+      - still within cooldown window
+      - price dropped >= PRICE_DROP_REPOST
+    """
+    rec = state.get(item_id)
+    if not rec:
+        return False
+    last_ts = rec.get("last_ts", 0.0)
+    last_price = rec.get("last_price", price)
+    age_hours = (time.time() - last_ts) / 3600.0
+    if age_hours >= COOLDOWN_HOURS:
+        return False
+    if last_price > 0 and (last_price - price) / last_price >= PRICE_DROP_REPOST:
+        return True
+    return False
 
-    The state dict stores item_id -> {"last_ts": timestamp, "last_price": price}.
+def apply_cooldown(item_id: str, price: float, state: Dict[str, Dict[str, float]]) -> bool:
+    """
+    Return True if the item should be suppressed due to cooldown.
     Suppress if last_ts is within COOLDOWN_HOURS and price drop < PRICE_DROP_REPOST.
     """
     rec = state.get(item_id)
@@ -219,9 +279,8 @@ def apply_cooldown(item_id: str, price: float, state: Dict[str, Dict[str, float]
     last_price = rec.get("last_price", price)
     age_hours = (time.time() - last_ts) / 3600.0
     if age_hours < COOLDOWN_HOURS:
-        # Only allow repost if price has dropped sufficiently
         if last_price > 0 and (last_price - price) / last_price >= PRICE_DROP_REPOST:
-            return False  # price drop is enough to repost
+            return False
         return True
     return False
 
@@ -285,12 +344,65 @@ def has_incomplete_hard_terms(text: str) -> bool:
     t = norm(text)
     return any(x in t for x in INCOMPLETE_HARD_TERMS)
 
+def looks_like_accessory(text: str) -> bool:
+    """
+    Heuristic: reject accessories/manuals/parts that are NOT watches.
+    We reject if accessory terms are present AND either:
+      - no watch indicators, OR
+      - explicit accessory context ("for models", "para", "fits", etc.)
+    """
+    t = norm(text)
+    if not t:
+        return False
+    if not title_has_any(t, GLOBAL_ACCESSORY_TERMS):
+        return False
+    has_watch = title_has_any(t, WATCH_INDICATORS)
+    has_context = title_has_any(t, ACCESSORY_CONTEXT_TERMS)
+    # Strong reject: accessory terms + context ("for models") regardless of watch word presence
+    if has_context:
+        return True
+    # Reject if it looks like pure accessory (no watch indicator)
+    if not has_watch:
+        return True
+    # Edge case: some watch listings say "bracelet" — don't auto-reject unless it also screams accessory
+    # If it contains "strap/correa/pulsera/buckle/clasp/links" and NOT "watch/reloj/orologio/montre/uhr", reject
+    strong_accessory = {"strap", "correa", "pulsera", "buckle", "hebilla", "clasp", "deployant", "links", "eslabon", "eslabón"}
+    if title_has_any(t, strong_accessory) and not any(w in t for w in ["watch", "reloj", "orologio", "montre", "uhr"]):
+        return True
+    return False
+
+def looks_like_movement_or_parts(text: str) -> bool:
+    """
+    Reject movement-only / parts-only listings.
+    """
+    t = norm(text)
+    if not t:
+        return False
+    # explicit parts signals
+    if any(x in t for x in ["for parts", "parts only", "movement only", "only movement", "solo movimiento", "solo calibro", "solo calibre"]):
+        return True
+    # movement nouns without watch context
+    movement_terms = {"movement", "movimiento", "uhrwerk", "werk", "caliber", "calibre"}
+    if title_has_any(t, movement_terms):
+        # If it *clearly* says it's a watch, allow; otherwise reject
+        watch_words = {"watch", "reloj", "orologio", "montre", "uhr"}
+        if not title_has_any(t, watch_words):
+            return True
+        # If it also contains "movement" + "cal" style and no other watch cues, reject
+        if "movement" in t and not any(x in t for x in ["automatic", "chronograph", "gmt", "diver", "date"]):
+            return True
+    return False
+
 def global_noise_reject(text: str) -> Optional[str]:
     t = norm(text)
     if not t:
         return "empty_text"
+    if looks_like_accessory(t):
+        return "accessory"
+    if looks_like_movement_or_parts(t):
+        return "movement_or_parts"
     if has_incomplete_hard_terms(t):
-        return "incomplete_or_manual"
+        return "incomplete_or_manual_or_parts"
     if title_has_any(t, GLOBAL_HARD_BAD_TERMS):
         return "hard_bad_terms"
     return None
@@ -303,10 +415,12 @@ def title_passes_target_filters(text: str, target: TargetModel) -> bool:
     me = norm_tokens(target.must_exclude or [])
     if me and any(x in t for x in me):
         return False
-    # If must include implies auto, ensure we do not match quartz
-    if any(x in {"automatic", "automatique", "automatik"} for x in mi):
-        if title_has_any(t, AUTO_CONTRADICTIONS):
-            return False
+    # If target expects auto, avoid quartz/solar/kinetic/manual
+    # We infer "expects auto" from keywords as well (not just must_include).
+    kwset = set(norm_tokens(target.keywords or []))
+    expects_auto = any(x in kwset for x in ["automatic", "powermatic 80", "co-axial", "co axial", "calibre", "caliber"])
+    if expects_auto and title_has_any(t, AUTO_CONTRADICTIONS):
+        return False
     return True
 
 def compute_match_score(title: str, target: TargetModel) -> int:
@@ -347,7 +461,6 @@ def compute_condition_score(text: str, target: TargetModel, condition_str: str =
         score += 15
     if any(x in t for x in bad):
         score -= 15
-    # Uncertainty terms lower confidence
     uncertainty = {"untested", "not tested", "as is", "read the description", "see description", "balance ok"}
     if any(x in t for x in uncertainty):
         score -= 20
@@ -360,7 +473,8 @@ def should_use_p75(detail_text: str, cscore: int) -> bool:
     strong = {
         "nos", "new old stock", "full set", "box and papers", "caja y papeles",
         "serviced", "service", "revised", "revisionato", "revisado", "revisión", "revision",
-        "mint", "like new", "nuevo con caja", "con caja y documentación", "con caja y documentacion"
+        "mint", "like new", "nuevo con caja", "con caja y documentación", "con caja y documentacion",
+        "neu mit karton und unterlagen", "full kit"
     }
     return any(x in t for x in strong)
 
@@ -378,21 +492,32 @@ def estimate_net_profit(buy: float, ship: float, close: float) -> Tuple[float, f
 # Target list loading
 # -----------------------------------------------------------------------------
 
-def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
+def load_target_bundle(path: str = "target_list.json") -> Tuple[List[TargetModel], Dict]:
     with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
+
+    meta: Dict = {}
+    if isinstance(raw, dict):
+        meta = {
+            "version": raw.get("version", ""),
+            "notes": raw.get("notes", ""),
+        }
+
     data = raw["targets"] if isinstance(raw, dict) and isinstance(raw.get("targets"), list) else raw
     targets: List[TargetModel] = []
-    for t in data:
+
+    for t in (data or []):
         brand = norm(t.get("brand", ""))
         mkws = t.get("model_keywords", []) or []
         if not brand or not mkws:
             continue
+
         kws = [norm(k) for k in mkws if norm(k)]
         if brand not in kws:
             kws.insert(0, brand)
         else:
             kws = [brand] + [k for k in kws if k != brand]
+
         est = t.get("catawiki_estimate") or {}
         p50 = float(est.get("p50", 0.0))
         p75 = float(est.get("p75", p50))
@@ -400,10 +525,12 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
             p50 = p75
         if p75 <= 0 and p50 > 0:
             p75 = p50
+
         buy_max = float(t.get("max_buy_eur", 0.0) or 0.0)
         query = (t.get("query") or "").strip()
         if not query:
             query = " ".join(kws[:4]).strip()
+
         targets.append(TargetModel(
             key=str(t.get("id", f"{brand}_{kws[1] if len(kws)>1 else 'model'}")),
             keywords=kws,
@@ -420,9 +547,11 @@ def load_targets_from_json(path: str = "target_list.json") -> List[TargetModel]:
             condition_boost_terms=t.get("condition_boost_terms", []) or [],
             condition_bad_terms=t.get("condition_bad_terms", []) or []
         ))
+
     if not targets:
         raise ValueError("target_list.json loaded but no valid targets found")
-    return targets
+
+    return targets, meta
 
 # -----------------------------------------------------------------------------
 # eBay API access
@@ -479,7 +608,7 @@ def extract_category_id(detail: Dict) -> str:
                 return cid.strip()
     return ""
 
-def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit: int = 50) -> List[Listing]:
+def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit: int = 50) -> List["Listing"]:
     base = "https://api.ebay.com/buy/browse/v1/item_summary/search"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -498,17 +627,20 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
     data = r.json()
     items = data.get("itemSummaries", []) or []
     out: List[Listing] = []
+
     for it in items:
         title = it.get("title") or ""
         url = clean_url(it.get("itemWebUrl") or "")
         item_id = it.get("itemId") or ""
         if not item_id:
             continue
+
         price = it.get("price") or {}
         try:
             price_eur = float(price.get("value"))
         except Exception:
             continue
+
         ship_eur = 0.0
         item_loc = it.get("itemLocation") or {}
         cc = (item_loc.get("country") or "").upper()
@@ -516,6 +648,7 @@ def ebay_search(token: str, query: str, category_id: Optional[str] = None, limit
         loc = f"{city}, {cc}".strip(", ") if (city or cc) else (cc or "")
         cond = it.get("condition") or ""
         cond_id = str(it.get("conditionId") or "")
+
         out.append(Listing(
             source="ebay",
             country_site=EBAY_MARKETPLACE_ID,
@@ -551,25 +684,35 @@ def ebay_get_item_detail(token: str, item_id: str) -> Dict:
 def enrich_listing_from_detail(li: Listing, detail: Dict) -> Listing:
     if not detail:
         return li
+
     li.condition = detail.get("condition") or li.condition or ""
     li.condition_id = str(detail.get("conditionId") or li.condition_id or "")
+
     sd = detail.get("shortDescription")
     if isinstance(sd, str) and sd.strip():
         li.short_desc = sd.strip()
+
+    # Shipping: choose MIN EUR across options (not first)
     ship_opts = detail.get("shippingOptions") or []
+    best_ship: Optional[float] = None
     if isinstance(ship_opts, list) and ship_opts:
         for opt in ship_opts:
             sc = opt.get("shippingCost") or {}
             val = eur_value(sc)
-            if val is not None:
-                li.shipping_eur = float(val)
-                break
+            if val is None:
+                continue
+            if best_ship is None or val < best_ship:
+                best_ship = float(val)
+    if best_ship is not None:
+        li.shipping_eur = best_ship
+
     loc = detail.get("itemLocation") or {}
     cc = (loc.get("country") or "").upper()
     city = (loc.get("city") or "")
     new_loc = f"{city}, {cc}".strip(", ") if (city or cc) else (cc or "")
     if new_loc:
         li.location_text = new_loc
+
     li.url = clean_url(li.url)
     li.category_id = extract_category_id(detail) or li.category_id
     return li
@@ -598,6 +741,7 @@ def tg_send(msg: str) -> None:
     if len(text) <= TG_MAX_LEN:
         _tg_send_one(token, chat, text)
         return
+
     lines = text.split("\n")
     chunk = ""
     for ln in lines:
@@ -617,17 +761,21 @@ def tg_send(msg: str) -> None:
 
 def main():
     now = now_utc()
-    targets = load_targets_from_json("target_list.json")
+    targets, tmeta = load_target_bundle("target_list.json")
+    target_version = (tmeta or {}).get("version", "")
     token = ebay_oauth_app_token()
     state = load_state()
+
     listings: List[Listing] = []
     counts = {"ebay": 0}
+
     # Phase 1: search per target
     for t in targets:
         got = ebay_search(token, query=t.query, category_id=t.ebay_category_id, limit=EBAY_LIMIT)
         listings.extend(got)
         counts["ebay"] += len(got)
         time.sleep(EBAY_THROTTLE_S)
+
     # Dedup by item_id
     seen_ids = set()
     unique: List[Listing] = []
@@ -639,12 +787,15 @@ def main():
         seen_ids.add(li.item_id)
         unique.append(li)
     listings = unique
+
     if not listings:
         tg_send(
             f"🕗 TIMELAB Morning Scan (eBay API {EBAY_MARKETPLACE_ID})\n{now}\n\n"
+            f"Target list version: {target_version or 'n/a'} | targets={len(targets)}\n"
             f"⚠️ 0 listings collected from eBay API."
         )
         return
+
     # Pre-score to decide which to enrich
     prescored: List[Tuple[int, float, Listing, TargetModel]] = []
     for li in listings:
@@ -652,6 +803,7 @@ def main():
             continue
         if global_noise_reject(li.title) is not None:
             continue
+
         best_ms = -1
         best_t: Optional[TargetModel] = None
         for t in targets:
@@ -663,11 +815,14 @@ def main():
                 best_t = t
         if not best_t:
             continue
+
         expected_close = best_t.catwiki_p50 if best_t.catwiki_p50 > 0 else max(li.price_eur * 1.5, li.price_eur + 120)
         net, _ = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
         prescored.append((best_ms, net, li, best_t))
+
     prescored.sort(key=lambda x: (x[0], x[1]), reverse=True)
     to_enrich = prescored[:max(0, DETAIL_FETCH_N)]
+
     enriched_map: Dict[str, Listing] = {}
     enriched_count = 0
     for _, _, li, _ in to_enrich:
@@ -676,20 +831,27 @@ def main():
         enriched_map[new_li.item_id] = new_li
         enriched_count += 1
         time.sleep(EBAY_DETAIL_THROTTLE_S)
+
     listings = [enriched_map.get(li.item_id, li) for li in listings]
+
     candidates: List[Candidate] = []
     raw_scored: List[Tuple[int, int, Listing, TargetModel, float, float]] = []
     cooldown_suppressed = 0
-    repost_count = 0
+    repost_price_drop_count = 0
+    sent_count = 0
+
     for li in listings:
         if not is_eu_location(li.location_text):
             continue
+
         # category filter
         if li.category_id and EBAY_ALLOWED_CATEGORY_IDS and li.category_id not in EBAY_ALLOWED_CATEGORY_IDS:
             continue
+
         detail_text = li.title + (" " + li.short_desc if li.short_desc else "") + (" " + li.condition if li.condition else "")
         if global_noise_reject(detail_text) is not None:
             continue
+
         best_ms = -1
         best_t: Optional[TargetModel] = None
         for t in targets:
@@ -701,12 +863,15 @@ def main():
                 best_t = t
         if not best_t:
             continue
+
         cscore = compute_condition_score(detail_text, best_t, condition_str=li.condition, condition_id=li.condition_id)
         if cscore == -999:
             continue
+
         expected_close = best_t.catwiki_p50 if best_t.catwiki_p50 > 0 else max(li.price_eur * 1.5, li.price_eur + 120)
         if best_t.catwiki_p75 > expected_close and should_use_p75(detail_text, cscore):
             expected_close = best_t.catwiki_p75
+
         # adjust based on condition score
         if cscore >= 15:
             expected_close *= 1.03
@@ -714,8 +879,10 @@ def main():
             expected_close *= 0.85
         elif cscore <= -20:
             expected_close *= 0.92
+
         net, roi = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
         raw_scored.append((best_ms, cscore, li, best_t, net, roi))
+
         # buy cap check
         if best_t.buy_max > 0 and li.price_eur > (best_t.buy_max * BUY_MAX_MULT):
             continue
@@ -727,20 +894,29 @@ def main():
             continue
         if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
             continue
+
         # cooldown check
         if apply_cooldown(li.item_id, li.price_eur, state):
             cooldown_suppressed += 1
             continue
+
+        # true repost tracking (price-drop within cooldown)
+        if is_repost_due_to_price_drop(li.item_id, li.price_eur, state):
+            repost_price_drop_count += 1
+
         candidates.append(Candidate(li, best_t, best_ms, cscore, expected_close, net, roi))
         update_state(li.item_id, li.price_eur, state)
-        repost_count += 1
+        sent_count += 1
+
     save_state(state)
     candidates.sort(key=lambda c: (c.net_profit, c.match_score, c.condition_score), reverse=True)
     top = candidates[:10]
+
     header = [
         f"🕗 TIMELAB Morning Scan — TOP {len(top) if top else 0} (eBay API {EBAY_MARKETPLACE_ID})",
         f"{now}",
         "",
+        f"Target list version: {target_version or 'n/a'} | targets={len(targets)}",
         f"Recolectado: eBay={counts['ebay']}",
         f"Filtros: net≥{MIN_NET_EUR:.0f}€ o ROI≥{int(MIN_NET_ROI*100)}% | match≥{MIN_MATCH_SCORE} | fake: {','.join(sorted(ALLOW_FAKE_RISK))}",
         f"BUY_MAX_MULT: {BUY_MAX_MULT}",
@@ -749,10 +925,11 @@ def main():
         f"EBAY_ALLOWED_CATEGORY_IDS: {','.join(sorted(EBAY_ALLOWED_CATEGORY_IDS))}",
         f"Cooldown: {COOLDOWN_HOURS}h | Repost si precio baja ≥{int(PRICE_DROP_REPOST*100)}%",
         f"Cooldown suppressed: {cooldown_suppressed}",
-        f"Reposted(price drop): {repost_count}",
+        f"Reposted(price drop): {repost_price_drop_count} | Sent: {sent_count}",
         f"State: path={STATE_PATH} | exists={'1' if os.path.exists(STATE_PATH) else '0'} | items={len(state)}",
         ""
     ]
+
     if not top:
         raw_scored.sort(key=lambda x: (x[0], x[4], x[1]), reverse=True)
         raw_top = raw_scored[:5]
@@ -768,6 +945,7 @@ def main():
             )
         tg_send("\n".join(lines))
         return
+
     msg = header
     for i, c in enumerate(top, 1):
         li = c.listing
@@ -780,13 +958,13 @@ def main():
             f"   🧾 eBay cond: {li.condition or 'n/a'} | cat: {li.category_id or 'n/a'}\n"
             f"   🔗 {li.url}\n"
         )
+
     tg_send("\n".join(msg))
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        # In case of crash, attempt to notify via Telegram
         err = f"❌ TIMELAB scanner crashed\n{now_utc()}\n\n{type(e).__name__}: {str(e)[:800]}"
         try:
             tg_send(err)
