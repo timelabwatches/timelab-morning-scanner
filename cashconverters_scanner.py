@@ -861,6 +861,8 @@ def run() -> None:
 
         close_est = estimate_close_eur(target, listing.cond, listing.title)
 
+        close_est = estimate_close_eur(target, listing.cond, listing.title)
+
         max_buy = target.get("max_buy_eur")
         if isinstance(max_buy, (int, float)) and listing.price_eur > float(max_buy):
             if CC_VERIFY_MODE:
