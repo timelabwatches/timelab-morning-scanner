@@ -831,7 +831,7 @@ def run() -> None:
         shipping = 0.0
         net, roi = estimate_net(listing.price_eur, close_est, shipping)
 
-        if not (net >= CC_MIN_NET_EUR or roi >= CC_MIN_NET_ROI):
+        if not (net >= CC_MIN_NET_EUR and roi >= CC_MIN_NET_ROI):
             if CC_VERIFY_MODE:
                 debug_rejected.append(
                     {"title": listing.title, "price": listing.price_eur, "url": listing.url,
