@@ -809,7 +809,7 @@
       "max_buy_eur": 1100,
       "must_include": ["damasko"],
       "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
-    }
+    },
     
     {
   "id": "SEIKO_CHRONOGRAPH_GENERIC",
