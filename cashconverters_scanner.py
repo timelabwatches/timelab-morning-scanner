@@ -1227,3 +1227,106 @@ if __name__ == "__main__":
     except Exception as e:
         telegram_send("❌ TIMELAB CashConverters scanner crashed\n" f"{type(e).__name__}: {e}")
         raise
+        
+        
+        import datetime as dt
+import re
+from typing import Any, Dict, List, Optional
+
+import requests
+from bs4 import BeautifulSoup
+
+
+PACKAGER_HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+PACKAGER_HTTP_TIMEOUT = 20
+
+
+def packager_clean_text(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip())
+
+
+def packager_extract_listing_id_from_url(url: str) -> Optional[str]:
+    match = re.search(r"/([A-Z0-9_]+)\.html", url)
+    return match.group(1) if match else None
+
+
+def packager_extract_price_eur(text: str) -> Optional[float]:
+    if not text:
+        return None
+
+    match = re.search(r"(\d+[.,]\d{2})\s*€", text)
+    if not match:
+        return None
+
+    raw = match.group(1).replace(".", "").replace(",", ".")
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def packager_infer_brand_hint(title: str, description: str) -> Optional[str]:
+    text = f"{title} {description}".lower()
+    brands = [
+        "omega", "seiko", "tissot", "longines", "certina", "zenith",
+        "hamilton", "oris", "tag heuer", "citizen", "bulova", "rado"
+    ]
+    for brand in brands:
+        if brand in text:
+            return brand
+    return None
+
+
+def fetch_listing_details(url: str) -> Dict[str, Any]:
+    response = requests.get(url, headers=PACKAGER_HEADERS, timeout=PACKAGER_HTTP_TIMEOUT)
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    page_text = packager_clean_text(soup.get_text(" ", strip=True))
+
+    title = None
+    h1 = soup.find("h1")
+    if h1:
+        title = packager_clean_text(h1.get_text())
+
+    if not title and soup.title:
+        title = packager_clean_text(soup.title.get_text())
+
+    price_eur = packager_extract_price_eur(page_text)
+
+    description = None
+    meta_desc = soup.find("meta", attrs={"name": "description"})
+    if meta_desc and meta_desc.get("content"):
+        description = packager_clean_text(meta_desc["content"])
+    else:
+        description = page_text[:1500]
+
+    image_urls: List[str] = []
+    for img in soup.find_all("img"):
+        src = img.get("src")
+        if not src:
+            continue
+        if src.startswith("http") and src not in image_urls:
+            image_urls.append(src)
+
+    listing_id = packager_extract_listing_id_from_url(url)
+    main_image_url = image_urls[0] if image_urls else None
+    brand_hint = packager_infer_brand_hint(title or "", description or "")
+
+    return {
+        "source": "cashconverters_es",
+        "listing_id": listing_id,
+        "url": url,
+        "title": title,
+        "price_eur": price_eur,
+        "shipping_eur": None,
+        "description": description,
+        "brand_hint": brand_hint,
+        "main_image_url": main_image_url,
+        "image_urls": image_urls,
+        "collected_at": dt.datetime.utcnow().isoformat() + "Z",
+        "status": "raw_collected",
+    }
