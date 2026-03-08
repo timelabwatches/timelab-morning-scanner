@@ -1,0 +1,79 @@
+{
+  "models": [
+    {
+      "model_id": "TISSOT_SEASTAR_1000_CHRONO_QUARTZ_T120417",
+      "brand": "Tissot",
+      "family": "Seastar",
+      "model": "Seastar 1000 Chronograph",
+      "reference_exact": ["T120417"],
+      "reference_prefix": ["T120.417", "T120417"],
+      "movement_type": "quartz",
+      "movement_name": "ETA G10",
+      "watch_type": "chrono diver quartz",
+      "aliases": ["seastar chrono quartz"],
+      "must_have_keywords": ["seastar", "chrono"],
+      "negative_keywords": ["powermatic 80"],
+      "target_id": "TISSOT_CHRONOGRAPH_GENERIC"
+    },
+    {
+      "model_id": "TISSOT_SEASTAR_POWERMATIC80_T120407",
+      "brand": "Tissot",
+      "family": "Seastar",
+      "model": "Seastar Powermatic 80",
+      "reference_exact": ["T120407"],
+      "reference_prefix": ["T120.407", "T120407"],
+      "movement_type": "automatic",
+      "movement_name": "Powermatic 80",
+      "watch_type": "diver automatic",
+      "aliases": ["seastar powermatic"],
+      "must_have_keywords": ["seastar", "powermatic"],
+      "negative_keywords": ["chrono quartz", "g10"],
+      "target_id": "TISSOT_SEASTAR_POWERMATIC80"
+    },
+    {
+      "model_id": "SEIKO5_SNXS_SRPK87",
+      "brand": "Seiko",
+      "family": "Seiko 5 Sports",
+      "model": "SNXS style SRPK87",
+      "reference_exact": ["SRPK87"],
+      "reference_prefix": ["SRPK"],
+      "movement_type": "automatic",
+      "movement_name": "4R36",
+      "watch_type": "sport automatic",
+      "aliases": ["snxs", "seiko 5"],
+      "must_have_keywords": ["seiko 5", "snxs"],
+      "negative_keywords": ["turtle", "prospex"],
+      "target_id": "SEIKO_5_SPORTS_SNXS_GENERIC"
+    },
+    {
+      "model_id": "SEIKO_PROSPEX_TURTLE",
+      "brand": "Seiko",
+      "family": "Prospex Turtle",
+      "model": "Turtle",
+      "reference_exact": ["SRP777", "SRPE93"],
+      "reference_prefix": ["SRP", "SRPE"],
+      "movement_type": "automatic",
+      "movement_name": "4R36",
+      "watch_type": "diver automatic",
+      "aliases": ["turtle prospex"],
+      "must_have_keywords": ["turtle", "prospex"],
+      "negative_keywords": ["snxs", "srpk87"],
+      "target_id": "SEIKO_PROSPEX_TURTLE_AUTO"
+    },
+    {
+      "model_id": "SEIKO_7N32_QUARTZ_BASIC",
+      "brand": "Seiko",
+      "family": "Quartz",
+      "model": "7N32",
+      "reference_exact": ["7N32"],
+      "reference_prefix": ["7N32"],
+      "movement_type": "quartz",
+      "movement_name": "7N32",
+      "watch_type": "quartz_basic",
+      "aliases": ["three hands"],
+      "must_have_keywords": ["7n32"],
+      "negative_keywords": ["chronograph", "chrono"],
+      "target_id": "SEIKO_QUARTZ_GENERIC"
+    }
+  ]
+}
