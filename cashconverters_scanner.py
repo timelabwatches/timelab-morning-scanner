@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TIMELAB — CashConverters ES scanner (requests + BeautifulSoup)
+TIMELAB -- CashConverters ES scanner (requests + BeautifulSoup)
 
 Core:
 - Scans wristwatches on cashconverters.es (latest items)
@@ -9,7 +9,7 @@ Core:
 - Estimates Catawiki close via target_list.p50 * CLOSE_HAIRCUT * condition_adj
 - Filters: reputable brand + match threshold + net/ROI threshold + allowed fake risk
 - Sends a SEPARATE Telegram message with:
-  "🕗 TIMELAB Morning Scan — TOP X (CashConverters ES)"
+  "🕗 TIMELAB Morning Scan -- TOP X (CashConverters ES)"
 
 Key hardening:
 - Robust price extraction (JSON-LD -> meta -> DOM -> € regex w/ context scoring)
@@ -54,6 +54,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from bs4 import BeautifulSoup
+
+from timelab_core.matching import detect_brand_ambiguity, detect_discovery_family, derive_match_confidence, keyword_in_title as core_keyword_in_title
+from timelab_core.scoring import bucket_from_score, brand_score, compute_confidence, compute_opportunity_score, derive_close_estimate_confidence, estimate_close_price, explain_bucket, liquidity_score
+from timelab_core.vision import load_vision_annotations, summarize_visual_hints
+from timelab_core.model_engine import gate_decision, load_model_master, load_target_stats, resolve_listing_identity
 
 
 # -----------------------------
@@ -140,6 +145,8 @@ CC_GOOD_BRANDS_TARGET = env_int("CC_GOOD_BRANDS_TARGET", 60)
 
 ALLOW_FAKE_RISK = {s.strip().lower() for s in env_str("CC_ALLOW_FAKE_RISK", "low,medium").split(",") if s.strip()}
 CC_STRICT_KEYWORDS = env_int("CC_STRICT_KEYWORDS", 1) == 1
+CC_DISCOVERY_MODE = env_int("CC_DISCOVERY_MODE", 1) == 1
+CC_VISION_HINTS_PATH = env_str("CC_VISION_HINTS_PATH", "vision_annotations.json")
 
 
 @dataclass
@@ -150,6 +157,7 @@ class Listing:
     store: str
     cond: str
     availability: str
+    price_confidence: int = 0
 
 
 # -----------------------------
@@ -241,6 +249,9 @@ def parse_price(text: str) -> Optional[float]:
     t = t.replace("\u00a0", " ")
     t = t.replace("€", "").replace("eur", "").replace("EUR", "").strip()
     t = re.sub(r"[^0-9,.\-]", "", t)
+
+    # Keep only one leading sign if present.
+    t = re.sub(r"(?!^)-", "", t)
 
     if "," in t and "." in t:
         if t.rfind(",") > t.rfind("."):
@@ -357,26 +368,74 @@ def _extract_price_from_dom(soup: BeautifulSoup) -> Optional[float]:
         ".prices .value", ".product-detail-price", ".js-product-price",
         "[data-price]", "[data-qa*='price']", "[class*='price']",
     ]
+    best_price = None
+    best_score = -10**18
+
     for sel in selectors:
         for el in soup.select(sel):
+            class_name = canon(" ".join(el.get("class", [])))
+            data_qa = canon(el.get("data-qa", ""))
+            ctx = canon(el.get_text(" ", strip=True))
+
             for attr in ("content", "data-price", "data-value", "value"):
                 if el.has_attr(attr):
                     p = parse_price(el.get(attr))
                     if p and p > 0:
-                        return p
+                        score = _price_confidence_score(p, class_name, data_qa, ctx)
+                        if score > best_score:
+                            best_score = score
+                            best_price = p
             txt = el.get_text(" ", strip=True)
             p = parse_price(txt)
             if p and p > 0:
-                return p
-    return None
+                score = _price_confidence_score(p, class_name, data_qa, ctx)
+                if score > best_score:
+                    best_score = score
+                    best_price = p
+    return best_price
+
+
+def _price_confidence_score(price: float, class_name: str, data_qa: str, ctx: str) -> int:
+    score = 0
+
+    anchor = f"{class_name} {data_qa} {ctx}"
+    if "price" in anchor or "precio" in anchor or "pvp" in anchor:
+        score += 35
+    if "product" in anchor or "pdp" in anchor:
+        score += 15
+    if "old" in anchor or "before" in anchor or "tachado" in anchor:
+        score -= 25
+    if "envío" in anchor or "envio" in anchor or "shipping" in anchor:
+        score -= 20
+
+    if 15 <= price <= 20000:
+        score += 20
+    if price < 15 or price > 30000:
+        score -= 100
+
+    return score * 1000 + int(price)
+
+
+def _extract_price_from_scripts(html: str) -> Optional[float]:
+    snippets = re.findall(r'"(?:price|salePrice|currentPrice|unitPrice)"\s*:\s*"?([0-9][0-9\.,]{0,14})"?', html, flags=re.IGNORECASE)
+    best = None
+    for raw in snippets:
+        p = parse_price(raw)
+        if not p or p <= 0:
+            continue
+        if 15 <= p <= 20000:
+            if best is None or p < best:
+                best = p
+    return best
 
 
 def _extract_price_from_regex(html: str) -> Optional[float]:
     if not html:
         return None
 
-    pattern = re.compile(r"(.{0,80})(\d{1,4}(?:[.,]\d{2})?)\s*€(.{0,80})", re.IGNORECASE | re.DOTALL)
-    matches = list(pattern.finditer(html))
+    pattern_after = re.compile(r"(.{0,80})(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)\s*€(.{0,80})", re.IGNORECASE | re.DOTALL)
+    pattern_before = re.compile(r"(.{0,80})€\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)(.{0,80})", re.IGNORECASE | re.DOTALL)
+    matches = list(pattern_after.finditer(html)) + list(pattern_before.finditer(html))
     if not matches:
         return None
 
@@ -431,10 +490,27 @@ def extract_price_best_effort(soup: BeautifulSoup, html: str) -> Optional[float]
     p = _extract_price_from_dom(soup)
     if p and p > 0:
         return p
+    p = _extract_price_from_scripts(html)
+    if p and p > 0:
+        return p
     p = _extract_price_from_regex(html)
     if p and p > 0:
         return p
     return None
+
+
+def estimate_price_confidence(soup: BeautifulSoup, html: str) -> int:
+    if _extract_price_from_jsonld(soup):
+        return 92
+    if _extract_price_from_meta(soup):
+        return 88
+    if _extract_price_from_dom(soup):
+        return 76
+    if _extract_price_from_scripts(html):
+        return 68
+    if _extract_price_from_regex(html):
+        return 55
+    return 20
 
 
 def parse_detail_page(html: str, url: str) -> Listing:
@@ -449,6 +525,7 @@ def parse_detail_page(html: str, url: str) -> Listing:
     title = canon(title)
 
     price = extract_price_best_effort(soup, html)
+    price_confidence = estimate_price_confidence(soup, html)
     if price is None:
         price = 0.0
 
@@ -492,6 +569,7 @@ def parse_detail_page(html: str, url: str) -> Listing:
         store=store,
         cond=canon(cond),
         availability=availability_str,
+        price_confidence=price_confidence,
     )
 
 
@@ -574,9 +652,13 @@ def model_keyword_hits(title: str, target: Dict[str, Any]) -> int:
             continue
         if len(kw) <= 2 and not kw.isdigit():
             continue
-        if kw in t:
+        if keyword_in_title(kw, t):
             hits += 1
     return hits
+
+
+def keyword_in_title(keyword: str, title: str) -> bool:
+    return core_keyword_in_title(keyword, title)
 
 
 def has_chrono_evidence(title: str, target: Dict[str, Any]) -> bool:
@@ -585,13 +667,16 @@ def has_chrono_evidence(title: str, target: Dict[str, Any]) -> bool:
 
     if target_id == "SEIKO_CHRONOGRAPH_GENERIC" or target_id == "SEIKO_VTG_CHRONOGRAPH_GENERIC":
         seiko_terms = [
-            "chrono", "chronograph", "7n32", "7t", "7a", "8t", "6138", "6139"
+            "chrono", "chronograph", "crono", "tachymeter", "tachimetro", "subdial",
+            "7n32", "7t", "7a", "8t", "8r", "6s", "6138", "6139", "7016", "7018",
         ]
         return any(term in t for term in seiko_terms)
 
     if target_id == "TISSOT_CHRONOGRAPH_GENERIC" or target_id == "TISSOT_VTG_CHRONOGRAPH_GENERIC":
         tissot_terms = [
-            "chrono", "chronograph", "prc 200", "prs 200", "c01", "valjoux", "7750"
+            "chrono", "chronograph", "crono", "tachymeter", "tachimetre", "subdial",
+            "prc 200", "prs 200", "prs516", "prs 516", "v8", "couturier",
+            "c01", "valjoux", "7750", "eta 7750", "lemania",
         ]
         return any(term in t for term in tissot_terms)
 
@@ -659,7 +744,9 @@ def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dic
 
         if CC_STRICT_KEYWORDS and isinstance(kws, list) and len(kws) > 0 and not is_generic_target:
             if hits < 1:
-                continue
+                pre_score = compute_match_score(title, trg)
+                if pre_score < (CC_MIN_MATCH_SCORE + 8):
+                    continue
 
         s = compute_match_score(title, trg)
         if s > best_s:
@@ -685,11 +772,36 @@ def condition_adjustment(cond: str, title: str) -> float:
     return 1.00
 
 
-def estimate_close_eur(target: Dict[str, Any], cond: str, title: str) -> float:
+def condition_score_from_text(cond: str, title: str) -> int:
+    adj = condition_adjustment(cond, title)
+    if adj >= 1.05:
+        return 20
+    if adj >= 1.03:
+        return 12
+    if adj >= 1.0:
+        return 5
+    if adj <= 0.80:
+        return -35
+    if adj <= 0.92:
+        return -20
+    return 0
+
+
+def estimate_close_eur(target: Dict[str, Any], cond: str, title: str) -> Tuple[float, Dict[str, bool]]:
     est = target.get("catawiki_estimate", {})
     p50 = float(est.get("p50", 0.0))
-    base = p50 * float(CLOSE_HAIRCUT)
-    return round(base * condition_adjustment(cond, title), 2)
+    p75 = float(est.get("p75", p50))
+    triggers = target.get("p75_triggers_any") or []
+    cscore = condition_score_from_text(cond, title)
+    close, flags = estimate_close_price(
+        p50=p50,
+        p75=p75,
+        detail_text=title + " " + cond,
+        condition_score=cscore,
+        haircut=float(CLOSE_HAIRCUT),
+        triggers=triggers,
+    )
+    return close, flags
 
 
 def estimate_net(buy_eur: float, close_eur: float, shipping_eur: float = 0.0) -> Tuple[float, float]:
@@ -715,6 +827,9 @@ def run() -> None:
         return
 
     session = make_session()
+    vision_hints = load_vision_annotations(CC_VISION_HINTS_PATH)
+    model_master = load_model_master()
+    target_stats = load_target_stats()
 
     try:
         targets = load_targets("target_list.json")
@@ -817,8 +932,33 @@ def run() -> None:
             continue
 
         target, match, hits = best_target(listing.title, targets)
+        identity = resolve_listing_identity(listing.title, summarize_visual_hints(vision_hints.get(listing.url, {})), model_master)
+
+        if identity.get("target_id"):
+            forced = next((t for t in targets if str(t.get("id", "")).upper() == str(identity.get("target_id", "")).upper()), None)
+            if forced is not None:
+                target = forced
+                match = max(match, int(identity.get("final_match_score", 0)))
+                hits = max(hits, int(identity.get("keyword_score", 0) // 6))
+
         if target is None:
             diag["dropped"]["no_kw_hit"] += 1
+            if CC_DISCOVERY_MODE:
+                family = detect_discovery_family(listing.title)
+                if family:
+                    debug_rejected.append({"title": listing.title, "price": listing.price_eur, "url": listing.url, "reason": f"discovery:{family}"})
+            continue
+
+        brand_ctx = detect_brand_ambiguity(listing.title, str(target.get("brand", "")))
+        if brand_ctx.get("movement_brand_contamination"):
+            if CC_VERIFY_MODE:
+                debug_rejected.append({
+                    "title": listing.title,
+                    "price": listing.price_eur,
+                    "url": listing.url,
+                    "target": target.get("id"),
+                    "reason": "movement_brand_contamination",
+                })
             continue
 
         if match < CC_MIN_MATCH_SCORE:
@@ -858,7 +998,7 @@ def run() -> None:
             continue
 
 
-        close_est = estimate_close_eur(target, listing.cond, listing.title)
+        close_est, listing_flags = estimate_close_eur(target, listing.cond, listing.title)
 
         max_buy = target.get("max_buy_eur")
         if isinstance(max_buy, (int, float)) and listing.price_eur > float(max_buy):
@@ -902,9 +1042,40 @@ def run() -> None:
         diag["passed"]["net_ok"] += 1
 
         target_id = str(target.get("id", "")).upper()
-        bucket = "BUY"
-        if target_id.endswith("_GENERIC"):
+        is_generic = target_id.endswith("_GENERIC")
+        cscore = condition_score_from_text(listing.cond, listing.title)
+
+        stats = target_stats.get(target_id, {})
+        sample_size = int(stats.get("sample_size", 0))
+        hammer_low = float(stats.get("p25", close_est * 0.9) or (close_est * 0.9))
+        hammer_base = float(stats.get("p50", close_est) or close_est)
+        hammer_high = float(stats.get("p75", close_est * 1.1) or (close_est * 1.1))
+        trend_90d = float(stats.get("last_90d_trend", 0.0) or 0.0)
+        opp_score = compute_opportunity_score(
+            net=net,
+            roi=roi,
+            match_score=match,
+            condition_score=cscore,
+            brand_points=brand_score(str(target.get("risk", "medium"))),
+            liquidity_points=liquidity_score(str(target.get("liquidity", "medium"))),
+            ambiguity_penalty=int(brand_ctx.get("penalty", 0)),
+        )
+        bucket = bucket_from_score(opp_score, is_generic=is_generic, discovery=False)
+        close_conf = derive_close_estimate_confidence(listing_flags, used_p75=(listing_flags.get("is_full_set") or listing_flags.get("is_nos")), condition_score=cscore)
+        match_conf = derive_match_confidence(max(match, int(identity.get("final_match_score", 0))), hits, int(brand_ctx.get("penalty", 0)))
+        valuation_conf = int((close_conf + min(95, sample_size * 8)) / 2)
+        conf = compute_confidence(listing.price_confidence, match_conf, close_conf)
+
+        gate = gate_decision(identity.get("match_confidence_band", "low"), sample_size, valuation_conf, net, roi, risk_allowed(target), bool(identity.get("model_ambiguity", True)))
+        if gate == "SKIP":
+            continue
+        if gate == "REVIEW":
             bucket = "REVIEW"
+        if gate == "BUY" and bucket not in {"BUY", "SUPER_BUY"}:
+            bucket = "BUY"
+
+        visual = summarize_visual_hints(vision_hints.get(listing.url, {}))
+        reason_text = explain_bucket(opp_score, bucket, net, roi, match, int(brand_ctx.get("penalty", 0)))
 
         candidates.append(
             {
@@ -916,13 +1087,36 @@ def run() -> None:
                 "net": net,
                 "roi": roi,
                 "bucket": bucket,
+                "score": opp_score,
+                "flags": listing_flags,
+                "reason_flags": brand_ctx.get("reason_flags", []),
+                "confidence": conf,
+                "visual": visual,
+                "explain": {
+                    "target": target.get("id"),
+                    "keyword_hits": hits,
+                    "penalties": int(brand_ctx.get("penalty", 0)),
+                    "comparables": {"p50": target.get("catawiki_estimate", {}).get("p50"), "p75": target.get("catawiki_estimate", {}).get("p75")},
+                    "bucket_reason": reason_text,
+                    "match_confidence_band": identity.get("match_confidence_band", "low"),
+                    "reference_score": identity.get("reference_score", 0),
+                    "spec_score": identity.get("spec_score", 0),
+                },
+                "valuation": {
+                    "hammer_low": round(hammer_low, 2),
+                    "hammer_base": round(hammer_base, 2),
+                    "hammer_high": round(hammer_high, 2),
+                    "sample_size": sample_size,
+                    "valuation_confidence": valuation_conf,
+                    "last_90d_trend": trend_90d,
+                },
             }
         )
 
-    candidates.sort(key=lambda x: (x["net"], x["match"], x["kw_hits"]), reverse=True)
+    candidates.sort(key=lambda x: (x.get("score", 0), x["net"], x["match"]), reverse=True)
     top = candidates[:10]
 
-    header = f"🕗 TIMELAB Morning Scan — TOP {len(top)} (CashConverters ES)\n\n"
+    header = f"🕗 TIMELAB Morning Scan -- TOP {len(top)} (CashConverters ES)\n\n"
 
     if not top:
         telegram_send(header + "No se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI).")
@@ -938,8 +1132,12 @@ def run() -> None:
             lines.append(f"   💶 Compra: {listing.price_eur:.2f}€ | 🎯 Cierre est.: {it['close_est']:.2f}€")
             lines.append(
                 f"   ✅ Neto est.: {it['net']:.2f}€ | ROI: {it['roi']*100:.1f}% | "
-                f"Match: {it['match']} | KW: {it['kw_hits']} | Cond: {listing.cond} | Disp: {listing.availability}"
+                f"Score: {it.get('score', 0)} | Match: {it['match']} | KW: {it['kw_hits']} | Cond: {listing.cond}"
             )
+            lines.append(f"   🏷️ Flags: {it.get('flags', {})} | Risk: {','.join(it.get('reason_flags', [])) or 'none'} | Disp: {listing.availability}")
+            lines.append(f"   🎯 Confidence: {it.get('confidence', {})} | 👁️ Visual: {it.get('visual', {})}")
+            lines.append(f"   📊 Valuation: {it.get('valuation', {})}")
+            lines.append(f"   🧠 Why: {it.get('explain', {}).get('bucket_reason', '')} | Evidence: ref={it.get('explain', {}).get('reference_score')} spec={it.get('explain', {}).get('spec_score')}")
             lines.append(f"   🧩 Target: {target_obj.get('id', 'N/A')}")
             lines.append(f"   📍 {listing.store}")
             lines.append(f"   🔗 {listing.url}\n")
@@ -948,7 +1146,7 @@ def run() -> None:
 
     if CC_DEBUG:
         dbg = []
-        dbg.append(f"🧪 TIMELAB CC Debug — scanned:{diag['scanned']} | page_bad:{diag['page_bad']}")
+        dbg.append(f"🧪 TIMELAB CC Debug -- scanned:{diag['scanned']} | page_bad:{diag['page_bad']}")
         dbg.append(
             "brands: "
             f"reputable:{diag['brands']['reputable']} | "
@@ -974,7 +1172,7 @@ def run() -> None:
 
         if CC_VERIFY_MODE and debug_rejected:
             dbg.append("\nTop candidates (even if rejected):")
-            debug_rejected.sort(key=lambda x: x.get("match", 0), reverse=True)
+            debug_rejected.sort(key=lambda x: (x.get("match", 0), x.get("price", 0)), reverse=True)
             for it in debug_rejected[:5]:
                 extra = []
                 extra.append(f"kw:{it.get('kw_hits')}")
