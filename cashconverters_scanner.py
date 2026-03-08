@@ -843,12 +843,24 @@ def run() -> None:
 
         diag["passed"]["net_ok"] += 1
 
-        candidates.append(
-            {"title": listing.title, "buy": listing.price_eur, "close": close_est,
-             "net": net, "roi": roi, "match": match, "kw_hits": hits, "cond": listing.cond,
-             "disp": listing.availability, "store": listing.store, "url": listing.url,
-             "target": target.get("id")}
-        )
+        target_id = str(trg.get("id", "")).upper()
+bucket = "BUY"
+
+if target_id.endswith("_GENERIC"):
+    bucket = "REVIEW"
+
+candidates.append(
+    {
+        "listing": listing,
+        "target": trg,
+        "match": match,
+        "kw_hits": hits,
+        "close_est": close_est,
+        "net": net,
+        "roi": roi,
+        "bucket": bucket,
+    }
+)
 
     candidates.sort(key=lambda x: (x["net"], x["match"], x["kw_hits"]), reverse=True)
     top = candidates[:10]
