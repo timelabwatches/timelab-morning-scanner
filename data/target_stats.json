@@ -1,0 +1,51 @@
+{
+  "target_stats": [
+    {
+      "target_id": "SEIKO_PROSPEX_TURTLE_AUTO",
+      "sample_size": 5,
+      "p25": 520.0,
+      "p50": 560.0,
+      "p75": 575.0,
+      "p90": 590.0,
+      "rolling_90d_p50": 560.0,
+      "rolling_180d_p50": 560.0,
+      "last_90d_trend": 0.0,
+      "outliers": [],
+      "confidence_score": 30,
+      "condition_adjustment_rules": {
+        "excellent": 1.04,
+        "good": 1.0,
+        "worn": 0.9
+      },
+      "full_set_adjustment_rules": {
+        "full_set": 1.03,
+        "box_only": 1.01,
+        "papers_only": 1.01
+      }
+    },
+    {
+      "target_id": "TISSOT_SEASTAR_POWERMATIC80",
+      "sample_size": 5,
+      "p25": 640.0,
+      "p50": 680.0,
+      "p75": 695.0,
+      "p90": 710.0,
+      "rolling_90d_p50": 680.0,
+      "rolling_180d_p50": 680.0,
+      "last_90d_trend": 0.0,
+      "outliers": [],
+      "confidence_score": 30,
+      "condition_adjustment_rules": {
+        "excellent": 1.04,
+        "good": 1.0,
+        "worn": 0.9
+      },
+      "full_set_adjustment_rules": {
+        "full_set": 1.03,
+        "box_only": 1.01,
+        "papers_only": 1.01
+      }
+    }
+  ],
+  "generated_at": "2026-03-08T11:48:30.541425"
+}

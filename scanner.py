@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TIMELAB — eBay wristwatch scanner (improved version)
+TIMELAB -- eBay wristwatch scanner (improved version)
 
 Fixes included (v5 hotfix):
 1) Global hard-reject for accessories (straps/bracelets/links/clasps/manuals/etc.) to avoid false positives.
@@ -22,6 +22,10 @@ from typing import Dict, List, Optional, Tuple, Set
 from urllib.parse import quote
 
 import requests
+
+from timelab_core.matching import detect_brand_ambiguity, derive_match_confidence
+from timelab_core.model_engine import gate_decision, load_model_master, load_target_stats, resolve_listing_identity
+from timelab_core.scoring import bucket_from_score, brand_score, compute_confidence, compute_opportunity_score, derive_close_estimate_confidence, estimate_close_price, explain_bucket, liquidity_score
 
 
 # -----------------------------------------------------------------------------
@@ -273,6 +277,8 @@ class TargetModel:
     catwiki_p75: float
     buy_max: float
     query: str
+    liquidity: str = "medium"
+    p75_triggers_any: List[str] = None
     ebay_category_id: Optional[str] = None
     must_include: List[str] = None
     must_exclude: List[str] = None
@@ -305,6 +311,12 @@ class Candidate:
     expected_close: float
     net_profit: float
     net_roi: float
+    opportunity_score: int
+    bucket: str
+    flags: Dict[str, bool]
+    risk_flags: List[str]
+    confidence: Dict[str, int]
+    explain: Dict[str, object]
 
 
 # -----------------------------------------------------------------------------
@@ -506,6 +518,8 @@ def load_target_bundle(path: str = "target_list.json") -> Tuple[List[TargetModel
             catwiki_p75=p75,
             buy_max=buy_max,
             query=query,
+            liquidity=str(t.get("liquidity", "medium")),
+            p75_triggers_any=[str(x) for x in (t.get("p75_triggers_any") or (raw.get("globals", {}) if isinstance(raw, dict) else {}).get("p75_triggers_any", [])) if str(x).strip()],
             ebay_category_id=t.get("ebay_category_id") or None,
             must_include=t.get("must_include", []) or [],
             must_exclude=t.get("must_exclude", []) or [],
@@ -736,6 +750,8 @@ def tg_send(msg: str) -> None:
 def main():
     now = now_utc()
     targets, tmeta = load_target_bundle("target_list.json")
+    model_master = load_model_master()
+    target_stats = load_target_stats()
     target_version = (tmeta or {}).get("version", "")
     token = ebay_oauth_app_token()
     state = load_state()
@@ -775,6 +791,8 @@ def main():
             continue
         if global_noise_reject(li.title) is not None:
             continue
+
+        identity = resolve_listing_identity(detail_text, None, model_master)
 
         best_ms = -1
         best_t: Optional[TargetModel] = None
@@ -824,6 +842,8 @@ def main():
         if global_noise_reject(detail_text) is not None:
             continue
 
+        identity = resolve_listing_identity(detail_text, None, model_master)
+
         best_ms = -1
         best_t: Optional[TargetModel] = None
         for t in targets:
@@ -831,11 +851,16 @@ def main():
                 continue
 
             title_norm = norm(detail_text)
+            brand_ctx = detect_brand_ambiguity(title_norm, (t.key.split("_")[0] if t.key else ""))
             if any(x in title_norm for x in MICROBRAND_BAD_TERMS):
                 if "SEIKO" in t.key or "TISSOT" in t.key:
                     continue
+            if brand_ctx.get("movement_brand_contamination") and ("SEIKO" in t.key or "TISSOT" in t.key):
+                continue
 
-            ms = compute_match_score(li.title, t)
+            ms = compute_match_score(li.title, t) - int(brand_ctx.get("penalty", 0) * 0.5)
+            if identity.get("target_id") and str(identity.get("target_id")).upper() == str(t.key).upper():
+                ms = max(ms, int(identity.get("final_match_score", 0)))
             if ms > best_ms:
                 best_ms = ms
                 best_t = t
@@ -847,16 +872,16 @@ def main():
         if cscore == -999:
             continue
 
-        expected_close = best_t.catwiki_p50 if best_t.catwiki_p50 > 0 else max(li.price_eur * 1.5, li.price_eur + 120)
-        if best_t.catwiki_p75 > expected_close and should_use_p75(detail_text, cscore):
-            expected_close = best_t.catwiki_p75
-
-        if cscore >= 15:
-            expected_close *= 1.03
-        elif cscore <= -35:
-            expected_close *= 0.85
-        elif cscore <= -20:
-            expected_close *= 0.92
+        base_close = best_t.catwiki_p50 if best_t.catwiki_p50 > 0 else max(li.price_eur * 1.5, li.price_eur + 120)
+        p75 = best_t.catwiki_p75 if best_t.catwiki_p75 > 0 else base_close
+        expected_close, flags = estimate_close_price(
+            p50=base_close,
+            p75=p75,
+            detail_text=detail_text,
+            condition_score=cscore,
+            haircut=1.0,
+            triggers=best_t.p75_triggers_any or [],
+        )
 
         net, roi = estimate_net_profit(li.price_eur, li.shipping_eur, expected_close)
         raw_scored.append((best_ms, cscore, li, best_t, net, roi))
@@ -879,16 +904,50 @@ def main():
         if is_repost_due_to_price_drop(li.item_id, li.price_eur, state):
             repost_price_drop_count += 1
 
-        candidates.append(Candidate(li, best_t, best_ms, cscore, expected_close, net, roi))
+        brand_ctx_final = detect_brand_ambiguity(detail_text, (best_t.key.split("_")[0] if best_t.key else ""))
+        stats = target_stats.get(str(best_t.key).upper(), {})
+        sample_size = int(stats.get("sample_size", 0))
+        valuation_confidence = min(95, 45 + sample_size * 6)
+
+        opp_score = compute_opportunity_score(
+            net=net,
+            roi=roi,
+            match_score=best_ms,
+            condition_score=cscore,
+            brand_points=brand_score(best_t.fake_risk),
+            liquidity_points=liquidity_score(best_t.liquidity),
+            ambiguity_penalty=int(brand_ctx_final.get("penalty", 0)),
+        )
+        bucket = bucket_from_score(opp_score, is_generic=("GENERIC" in best_t.key), discovery=False)
+        match_band = identity.get("match_confidence_band", "low")
+        gate = gate_decision(match_band, sample_size, valuation_confidence, net, roi, best_t.fake_risk in ALLOW_FAKE_RISK, bool(identity.get("model_ambiguity", True)))
+        if gate == "SKIP":
+            continue
+        if gate == "REVIEW":
+            bucket = "REVIEW"
+
+        confidence = compute_confidence(78, derive_match_confidence(best_ms, 2, int(brand_ctx_final.get("penalty", 0))), derive_close_estimate_confidence(flags, used_p75=flags.get("is_full_set", False), condition_score=cscore))
+        explain = {
+            "target": best_t.key,
+            "keyword_hits": 2,
+            "penalties": int(brand_ctx_final.get("penalty", 0)),
+            "comparables": {"p50": best_t.catwiki_p50, "p75": best_t.catwiki_p75},
+            "bucket_reason": explain_bucket(opp_score, bucket, net, roi, best_ms, int(brand_ctx_final.get("penalty", 0))),
+            "match_confidence_band": match_band,
+            "sample_size": sample_size,
+            "valuation_confidence": valuation_confidence,
+        }
+
+        candidates.append(Candidate(li, best_t, best_ms, cscore, expected_close, net, roi, opp_score, bucket, flags, list(brand_ctx_final.get("reason_flags", [])), confidence, explain))
         update_state(li.item_id, li.price_eur, state)
         sent_count += 1
 
     save_state(state)
-    candidates.sort(key=lambda c: (c.net_profit, c.match_score, c.condition_score), reverse=True)
+    candidates.sort(key=lambda c: (c.opportunity_score, c.net_profit, c.match_score), reverse=True)
     top = candidates[:10]
 
     header = [
-        f"🕗 TIMELAB Morning Scan — TOP {len(top) if top else 0} (eBay API {EBAY_MARKETPLACE_ID})",
+        f"🕗 TIMELAB Morning Scan -- TOP {len(top) if top else 0} (eBay API {EBAY_MARKETPLACE_ID})",
         f"{now}",
         "",
         f"Target list version: {target_version or 'n/a'} | targets={len(targets)}",
@@ -927,7 +986,11 @@ def main():
         msg.append(
             f"{i}) [ebay] {li.title}\n"
             f"   💶 Compra: {li.price_eur:.0f}€ | 🚚 Envío: {li.shipping_eur:.0f}€ | 🎯 Cierre est.: {c.expected_close:.0f}€\n"
-            f"   ✅ Neto est.: {c.net_profit:.0f}€ | ROI: {int(c.net_roi*100)}% | Match: {c.match_score} | Cond: {c.condition_score}\n"
+            f"   ✅ Neto est.: {c.net_profit:.0f}€ | ROI: {int(c.net_roi*100)}% | Score: {c.opportunity_score} | Match: {c.match_score} | Cond: {c.condition_score}\n"
+            f"   🧺 Bucket: {c.bucket} | Flags: {c.flags} | Risk: {','.join(c.risk_flags) or 'none'}\n"
+            f"   🎯 Confidence: {c.confidence}\n"
+            f"   📊 sample={c.explain.get('sample_size')} | valuation_conf={c.explain.get('valuation_confidence')} | match_band={c.explain.get('match_confidence_band')}\n"
+            f"   🧠 Why: {c.explain.get('bucket_reason', '')}\n"
             f"   🧩 Target: {c.target.key}\n"
             f"   📍 {li.location_text}\n"
             f"   🧾 eBay cond: {li.condition or 'n/a'} | cat: {li.category_id or 'n/a'}\n"
