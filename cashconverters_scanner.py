@@ -629,10 +629,14 @@ def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dic
             continue
 
         hits = model_keyword_hits(title, trg)
+
         kws = trg.get("model_keywords") or []
-        if CC_STRICT_KEYWORDS and isinstance(kws, list) and len(kws) > 0:
+        target_id = str(trg.get("id", "")).upper()
+        is_generic_target = target_id.endswith("_GENERIC")
+
+        if CC_STRICT_KEYWORDS and isinstance(kws, list) and len(kws) > 0 and not is_generic_target:
             if hits < 1:
-                # Not eligible — prevents “any Seiko” mapping to Turtle/Samurai etc.
+                # Not eligible — prevents exact targets from matching too broadly
                 continue
 
         s = compute_match_score(title, trg)
