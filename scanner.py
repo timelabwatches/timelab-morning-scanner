@@ -892,7 +892,7 @@ def main():
             continue
         if cscore <= -35:
             continue
-        if not (net >= MIN_NET_EUR or roi >= MIN_NET_ROI):
+        if not (net >= MIN_NET_EUR and roi >= MIN_NET_ROI):
             continue
 
         # cooldown check
