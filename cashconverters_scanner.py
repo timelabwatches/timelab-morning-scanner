@@ -579,6 +579,34 @@ def model_keyword_hits(title: str, target: Dict[str, Any]) -> int:
     return hits
 
 
+def has_chrono_evidence(title: str, target: Dict[str, Any]) -> bool:
+    t = canon(title)
+    target_id = str(target.get("id", "")).upper()
+
+    if target_id == "SEIKO_CHRONOGRAPH_GENERIC" or target_id == "SEIKO_VTG_CHRONOGRAPH_GENERIC":
+        seiko_terms = [
+            "chrono", "chronograph", "7n32", "7t", "7a", "8t", "6138", "6139"
+        ]
+        return any(term in t for term in seiko_terms)
+
+    if target_id == "TISSOT_CHRONOGRAPH_GENERIC" or target_id == "TISSOT_VTG_CHRONOGRAPH_GENERIC":
+        tissot_terms = [
+            "chrono", "chronograph", "prc 200", "prs 200", "c01", "valjoux", "7750"
+        ]
+        return any(term in t for term in tissot_terms)
+
+    return True
+
+
+def target_requires_chrono_evidence(target: Dict[str, Any]) -> bool:
+    target_id = str(target.get("id", "")).upper()
+    return target_id in {
+        "SEIKO_CHRONOGRAPH_GENERIC",
+        "SEIKO_VTG_CHRONOGRAPH_GENERIC",
+        "TISSOT_CHRONOGRAPH_GENERIC",
+        "TISSOT_VTG_CHRONOGRAPH_GENERIC",
+    }
+
 def compute_match_score(title: str, target: Dict[str, Any]) -> int:
     t = canon(title)
     score = 0
