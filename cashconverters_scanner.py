@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TIMELAB -- CashConverters ES scanner (requests + BeautifulSoup)
+TIMELAB — CashConverters ES scanner (requests + BeautifulSoup)
 
 Core:
 - Scans wristwatches on cashconverters.es (latest items)
@@ -9,7 +9,7 @@ Core:
 - Estimates Catawiki close via target_list.p50 * CLOSE_HAIRCUT * condition_adj
 - Filters: reputable brand + match threshold + net/ROI threshold + allowed fake risk
 - Sends a SEPARATE Telegram message with:
-  "🕗 TIMELAB Morning Scan -- TOP X (CashConverters ES)"
+  "🕗 TIMELAB Morning Scan — TOP X (CashConverters ES)"
 
 Key hardening:
 - Robust price extraction (JSON-LD -> meta -> DOM -> € regex w/ context scoring)
@@ -417,16 +417,49 @@ def _price_confidence_score(price: float, class_name: str, data_qa: str, ctx: st
 
 
 def _extract_price_from_scripts(html: str) -> Optional[float]:
-    snippets = re.findall(r'"(?:price|salePrice|currentPrice|unitPrice)"\s*:\s*"?([0-9][0-9\.,]{0,14})"?', html, flags=re.IGNORECASE)
-    best = None
-    for raw in snippets:
+    if not html:
+        return None
+
+    indicator_terms = ("price", "precio", "sale", "offer", "current", "amount")
+    reject_terms = ("shipping", "envio", "envío", "installment", "cuota")
+
+    candidates = []
+    regex = re.compile(r"(?:\"|')(?:price|salePrice|currentPrice|unitPrice|amount)(?:\"|')\s*:\s*(?:\"|')?([0-9][0-9\.,]{0,14})(?:\"|')?", re.IGNORECASE)
+
+    for m in regex.finditer(html):
+        raw = m.group(1)
         p = parse_price(raw)
-        if not p or p <= 0:
+        if not p or p <= 0 or p < 15 or p > 20000:
             continue
-        if 15 <= p <= 20000:
-            if best is None or p < best:
-                best = p
-    return best
+
+        start = max(0, m.start() - 120)
+        end = min(len(html), m.end() + 120)
+        ctx = canon(html[start:end])
+
+        score = 0
+        if any(term in ctx for term in indicator_terms):
+            score += 40
+        if any(term in ctx for term in reject_terms):
+            score -= 80
+        if "price" in ctx or "precio" in ctx:
+            score += 20
+        if "sale" in ctx or "offer" in ctx:
+            score += 10
+
+        # mild preference for realistic retail ranges
+        if 40 <= p <= 5000:
+            score += 10
+
+        candidates.append((score, p))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: (x[0], -x[1]), reverse=True)
+    best_score, best_price = candidates[0]
+    if best_score < 0:
+        return None
+    return best_price
 
 
 def _extract_price_from_regex(html: str) -> Optional[float]:
@@ -887,9 +920,6 @@ def run() -> None:
             if len(listing_urls) >= CC_MAX_ITEMS:
                 break
 
-        if reputable_seen >= CC_GOOD_BRANDS_TARGET:
-            break
-
     candidates: List[Dict[str, Any]] = []
     debug_rejected: List[Dict[str, Any]] = []
 
@@ -1116,7 +1146,7 @@ def run() -> None:
     candidates.sort(key=lambda x: (x.get("score", 0), x["net"], x["match"]), reverse=True)
     top = candidates[:10]
 
-    header = f"🕗 TIMELAB Morning Scan -- TOP {len(top)} (CashConverters ES)\n\n"
+    header = f"🕗 TIMELAB Morning Scan — TOP {len(top)} (CashConverters ES)\n\n"
 
     if not top:
         telegram_send(header + "No se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI).")
@@ -1146,7 +1176,7 @@ def run() -> None:
 
     if CC_DEBUG:
         dbg = []
-        dbg.append(f"🧪 TIMELAB CC Debug -- scanned:{diag['scanned']} | page_bad:{diag['page_bad']}")
+        dbg.append(f"🧪 TIMELAB CC Debug — scanned:{diag['scanned']} | page_bad:{diag['page_bad']}")
         dbg.append(
             "brands: "
             f"reputable:{diag['brands']['reputable']} | "
