@@ -805,13 +805,15 @@
       "query": "Damasko DA OR Damasko DC automatic",
       "risk": "medium",
       "liquidity": "medium-high",
-      "catawiki_estimate": { "p50": 1450, "p75": 1750, "notes": "p75 full set; acero endurecido sin marcas es clave" },
+      "catawiki_estimate": {
+        "p50": 1450,
+        "p75": 1750,
+        "notes": "p75 full set; acero endurecido sin marcas es clave"
+      },
       "max_buy_eur": 1100,
       "must_include": ["damasko"],
       "must_exclude": ["case", "cassa", "boitier", "dial", "cadran"]
     },
-    
-    {
     {
       "id": "SEIKO_CHRONOGRAPH_GENERIC",
       "brand": "Seiko",
@@ -884,6 +886,5 @@
       "must_include": ["tissot"],
       "must_exclude": ["case", "cassa", "boitier", "boîtier", "dial", "cadran", "crown", "corona", "bracelet", "armband", "bracciale", "wall clock", "desk clock", "pocket watch"]
     }
-    
   ]
 }
