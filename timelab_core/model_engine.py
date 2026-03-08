@@ -226,10 +226,18 @@ def resolve_listing_identity(text: str, visual_flags: Optional[Dict] = None, mod
 
 
 def gate_decision(match_band: str, sample_size: int, valuation_confidence: int, expected_net: float, roi: float, fake_allowed: bool, ambiguity: bool) -> str:
-    if match_band == "high" and sample_size >= 8 and valuation_confidence >= 65 and expected_net >= 20 and roi >= 0.08 and fake_allowed and not ambiguity:
-        return "BUY"
-    if ambiguity or match_band == "low" or sample_size < 4:
+    if ambiguity or match_band == "low":
         return "SKIP"
+
+    if match_band == "high" and valuation_confidence >= 65 and expected_net >= 20 and roi >= 0.08 and fake_allowed:
+        return "BUY"
+
+    if expected_net >= 20 and roi >= 0.08 and fake_allowed:
+        return "REVIEW"
+
+    if sample_size < 4:
+        return "REVIEW"
+
     return "REVIEW"
 
 
