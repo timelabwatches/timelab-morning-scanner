@@ -14,7 +14,8 @@ Core:
 Key hardening:
 - Robust price extraction (JSON-LD -> meta -> DOM -> € regex w/ context scoring)
 - Prevent over-broad matching:
-  If a target has model_keywords, REQUIRE at least 1 keyword hit for eligibility.
+  If a target has model_keywords, REQUIRE at least 1 keyword hit for eligibility,
+  except for *_GENERIC targets.
 - Global exclusions: ladies / smartwatch-ish terms (to avoid Connected, etc.)
 
 Env vars:
@@ -29,7 +30,7 @@ Env vars:
 
   CC_DEBUG (default 0)
   CC_VERIFY_MODE (default 0)   # if 1: show near-misses in debug
-  CC_STRICT_KEYWORDS (default 1)  # if 1: enforce model_keywords must hit at least 1
+  CC_STRICT_KEYWORDS (default 1)  # if 1: enforce model_keywords must hit at least 1 (except *_GENERIC)
 
   CC_MIN_MATCH_SCORE (default 65)
   CC_MIN_NET_EUR (default 20)
@@ -89,7 +90,6 @@ GOOD_COND_TERMS = [
     "excelente", "muy buen estado", "buen estado", "como nuevo",
 ]
 
-# Global "avoid" terms (not brands) — helps reduce obvious false positives
 SMARTWATCH_TERMS = [
     "smartwatch", "connected", "apple watch", "watch series", "galaxy watch", "wear os",
 ]
@@ -139,7 +139,6 @@ CLOSE_HAIRCUT = env_float("CLOSE_HAIRCUT", 0.90)
 CC_GOOD_BRANDS_TARGET = env_int("CC_GOOD_BRANDS_TARGET", 60)
 
 ALLOW_FAKE_RISK = {s.strip().lower() for s in env_str("CC_ALLOW_FAKE_RISK", "low,medium").split(",") if s.strip()}
-
 CC_STRICT_KEYWORDS = env_int("CC_STRICT_KEYWORDS", 1) == 1
 
 
@@ -413,7 +412,6 @@ def _extract_price_from_regex(html: str) -> Optional[float]:
         if "," in str(m.group(2)) or "." in str(m.group(2)):
             score += 5
 
-        # Tie-break: prefer higher price if context similar
         score2 = score * 1000 + int(p)
 
         if score2 > best_score:
@@ -568,16 +566,12 @@ def violates_must_exclude(title: str, target: Dict[str, Any]) -> bool:
 
 
 def model_keyword_hits(title: str, target: Dict[str, Any]) -> int:
-    """
-    Count hits of model_keywords in the title. Treat short tokens carefully.
-    """
     t = canon(title)
     kws = [canon(x) for x in (target.get("model_keywords") or []) if isinstance(x, str)]
     hits = 0
     for kw in kws:
         if not kw:
             continue
-        # avoid ultra-short noise (e.g., "t", "a")
         if len(kw) <= 2 and not kw.isdigit():
             continue
         if kw in t:
@@ -605,7 +599,7 @@ def compute_match_score(title: str, target: Dict[str, Any]) -> int:
 
     hits = model_keyword_hits(title, target)
     if hits > 0:
-        score += min(25, hits * 8)  # stronger weight so “real” model evidence matters
+        score += min(25, hits * 8)
 
     if has_any(t, GOOD_COND_TERMS):
         score += 5
@@ -618,7 +612,8 @@ def compute_match_score(title: str, target: Dict[str, Any]) -> int:
 def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], int, int]:
     """
     Returns (target, match_score, kw_hits).
-    With CC_STRICT_KEYWORDS enabled: if target has model_keywords -> require kw_hits >= 1.
+    With CC_STRICT_KEYWORDS enabled: if target has model_keywords -> require kw_hits >= 1,
+    except for *_GENERIC targets.
     """
     best_t = None
     best_s = -1
@@ -636,7 +631,6 @@ def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dic
 
         if CC_STRICT_KEYWORDS and isinstance(kws, list) and len(kws) > 0 and not is_generic_target:
             if hits < 1:
-                # Not eligible — prevents exact targets from matching too broadly
                 continue
 
         s = compute_match_score(title, trg)
@@ -770,7 +764,6 @@ def run() -> None:
         polite_sleep(CC_THROTTLE_S)
         diag["scanned"] += 1
 
-        # Global discard: ladies / smartwatch wording
         if has_any(listing.title, LADIES_TERMS):
             diag["dropped"]["ladies"] += 1
             continue
@@ -778,7 +771,6 @@ def run() -> None:
             diag["dropped"]["smartwatch"] += 1
             continue
 
-        # Brand filtering
         b = extract_brand(listing.title)
         if b is None:
             diag["brands"]["no_brand"] += 1
@@ -796,18 +788,23 @@ def run() -> None:
         if has_any(listing.title, BAD_COND_TERMS):
             continue
 
-        # Match to targets (with keyword strictness)
         target, match, hits = best_target(listing.title, targets)
         if target is None:
-            # This means we filtered out candidates due to strict keywords
             diag["dropped"]["no_kw_hit"] += 1
             continue
 
         if match < CC_MIN_MATCH_SCORE:
             if CC_VERIFY_MODE:
                 debug_rejected.append(
-                    {"title": listing.title, "price": listing.price_eur, "url": listing.url,
-                     "match": match, "kw_hits": hits, "target": target.get("id"), "cond": listing.cond}
+                    {
+                        "title": listing.title,
+                        "price": listing.price_eur,
+                        "url": listing.url,
+                        "match": match,
+                        "kw_hits": hits,
+                        "target": target.get("id"),
+                        "cond": listing.cond,
+                    }
                 )
             continue
 
@@ -822,9 +819,16 @@ def run() -> None:
         if isinstance(max_buy, (int, float)) and listing.price_eur > float(max_buy):
             if CC_VERIFY_MODE:
                 debug_rejected.append(
-                    {"title": listing.title, "price": listing.price_eur, "url": listing.url,
-                     "match": match, "kw_hits": hits, "target": target.get("id"),
-                     "cond": listing.cond, "reason": "over_max_buy"}
+                    {
+                        "title": listing.title,
+                        "price": listing.price_eur,
+                        "url": listing.url,
+                        "match": match,
+                        "kw_hits": hits,
+                        "target": target.get("id"),
+                        "cond": listing.cond,
+                        "reason": "over_max_buy",
+                    }
                 )
             continue
 
@@ -834,33 +838,41 @@ def run() -> None:
         if not (net >= CC_MIN_NET_EUR and roi >= CC_MIN_NET_ROI):
             if CC_VERIFY_MODE:
                 debug_rejected.append(
-                    {"title": listing.title, "price": listing.price_eur, "url": listing.url,
-                     "match": match, "kw_hits": hits, "target": target.get("id"),
-                     "cond": listing.cond, "net": net, "roi": roi, "close": close_est,
-                     "reason": "net_or_roi_below"}
+                    {
+                        "title": listing.title,
+                        "price": listing.price_eur,
+                        "url": listing.url,
+                        "match": match,
+                        "kw_hits": hits,
+                        "target": target.get("id"),
+                        "cond": listing.cond,
+                        "net": net,
+                        "roi": roi,
+                        "close": close_est,
+                        "reason": "net_or_roi_below",
+                    }
                 )
             continue
 
         diag["passed"]["net_ok"] += 1
 
-        target_id = str(trg.get("id", "")).upper()
-bucket = "BUY"
+        target_id = str(target.get("id", "")).upper()
+        bucket = "BUY"
+        if target_id.endswith("_GENERIC"):
+            bucket = "REVIEW"
 
-if target_id.endswith("_GENERIC"):
-    bucket = "REVIEW"
-
-candidates.append(
-    {
-        "listing": listing,
-        "target": trg,
-        "match": match,
-        "kw_hits": hits,
-        "close_est": close_est,
-        "net": net,
-        "roi": roi,
-        "bucket": bucket,
-    }
-)
+        candidates.append(
+            {
+                "listing": listing,
+                "target": target,
+                "match": match,
+                "kw_hits": hits,
+                "close_est": close_est,
+                "net": net,
+                "roi": roi,
+                "bucket": bucket,
+            }
+        )
 
     candidates.sort(key=lambda x: (x["net"], x["match"], x["kw_hits"]), reverse=True)
     top = candidates[:10]
@@ -871,21 +883,22 @@ candidates.append(
         telegram_send(header + "No se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI).")
     else:
         lines = [header]
-    for i, it in enumerate(top, 1):
+        for i, it in enumerate(top, 1):
+            bucket = it.get("bucket", "BUY")
+            emoji = "🟢" if bucket == "BUY" else "🟡"
+            listing = it["listing"]
+            target_obj = it["target"]
 
-    bucket = it.get("bucket", "BUY")
-    emoji = "🟢" if bucket == "BUY" else "🟡"
-
-lines.append(f"{i}) {emoji} [{bucket}] [CC] {it['title']}")
-            lines.append(f"{i}) [cc] {it['title']}")
-            lines.append(f"   💶 Compra: {it['buy']:.2f}€ | 🎯 Cierre est.: {it['close']:.2f}€")
+            lines.append(f"{i}) {emoji} [{bucket}] [CC] {listing.title}")
+            lines.append(f"   💶 Compra: {listing.price_eur:.2f}€ | 🎯 Cierre est.: {it['close_est']:.2f}€")
             lines.append(
                 f"   ✅ Neto est.: {it['net']:.2f}€ | ROI: {it['roi']*100:.1f}% | "
-                f"Match: {it['match']} | KW: {it['kw_hits']} | Cond: {it['cond']} | Disp: {it['disp']}"
+                f"Match: {it['match']} | KW: {it['kw_hits']} | Cond: {listing.cond} | Disp: {listing.availability}"
             )
-            lines.append(f"   🧩 Target: {it['target']}")
-            lines.append(f"   📍 {it['store']}")
-            lines.append(f"   🔗 {it['url']}\n")
+            lines.append(f"   🧩 Target: {target_obj.get('id', 'N/A')}")
+            lines.append(f"   📍 {listing.store}")
+            lines.append(f"   🔗 {listing.url}\n")
+
         telegram_send("\n".join(lines).strip())
 
     if CC_DEBUG:
@@ -899,11 +912,15 @@ lines.append(f"{i}) {emoji} [{bucket}] [CC] {it['title']}")
             f"no_brand:{diag['brands']['no_brand']}"
         )
         dbg.append(f"passed: match_ok:{diag['passed']['match_ok']} | net_ok:{diag['passed']['net_ok']}")
-        dbg.append(f"dropped: ladies:{diag['dropped']['ladies']} | smartwatch:{diag['dropped']['smartwatch']} | no_kw_hit:{diag['dropped']['no_kw_hit']}")
+        dbg.append(
+            f"dropped: ladies:{diag['dropped']['ladies']} | "
+            f"smartwatch:{diag['dropped']['smartwatch']} | "
+            f"no_kw_hit:{diag['dropped']['no_kw_hit']}"
+        )
         dbg.append(
             "thresholds: "
             f"match>={CC_MIN_MATCH_SCORE} | "
-            f"net>={CC_MIN_NET_EUR} OR roi>={CC_MIN_NET_ROI} | "
+            f"net>={CC_MIN_NET_EUR} AND roi>={CC_MIN_NET_ROI} | "
             f"haircut:{CLOSE_HAIRCUT} | strict_kw:{1 if CC_STRICT_KEYWORDS else 0}"
         )
         dbg.append(f"stop: max_items:{CC_MAX_ITEMS} | good_brands_target:{CC_GOOD_BRANDS_TARGET}")
@@ -922,7 +939,10 @@ lines.append(f"{i}) {emoji} [{bucket}] [CC] {it['title']}")
                 if "reason" in it:
                     extra.append(f"reason:{it['reason']}")
                 extra_s = " | " + " ".join(extra) if extra else ""
-                dbg.append(f"- match:{it.get('match')} target:{it.get('target')} price:{it.get('price'):.2f} {it.get('title')}{extra_s}")
+                dbg.append(
+                    f"- match:{it.get('match')} target:{it.get('target')} "
+                    f"price:{it.get('price'):.2f} {it.get('title')}{extra_s}"
+                )
                 dbg.append(f"  url:{it.get('url')}")
 
         telegram_send("\n".join(dbg).strip())
