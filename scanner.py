@@ -200,6 +200,19 @@ GLOBAL_BAD_TERMS: Set[str] = {
     "read the description", "see description", "please read"
 }
 
+MICROBRAND_BAD_TERMS: Set[str] = {
+    "baltany",
+    "san martin",
+    "milifortic",
+    "pagani",
+    "pagani design",
+    "addiesdive",
+    "steeldive",
+    "heimdallr",
+    "cadisen",
+    "benyar"
+}
+
 # To weed out quartz when we want automatic only
 AUTO_CONTRADICTIONS: Set[str] = {
     "quartz", "cuarzo", "battery", "pile",
