@@ -841,6 +841,24 @@ def run() -> None:
         if not risk_allowed(target):
             continue
 
+        if target_requires_chrono_evidence(target) and not has_chrono_evidence(listing.title, target):
+            if CC_VERIFY_MODE:
+                debug_rejected.append(
+                    {
+                        "title": listing.title,
+                        "price": listing.price_eur,
+                        "url": listing.url,
+                        "match": match,
+                        "kw_hits": hits,
+                        "target": target.get("id"),
+                        "cond": listing.cond,
+                        "reason": "missing_chrono_evidence",
+                    }
+                )
+            continue
+
+        close_est = estimate_close_eur(target, listing.cond, listing.title)
+
         close_est = estimate_close_eur(target, listing.cond, listing.title)
 
         max_buy = target.get("max_buy_eur")
