@@ -871,7 +871,12 @@ candidates.append(
         telegram_send(header + "No se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI).")
     else:
         lines = [header]
-        for i, it in enumerate(top, 1):
+    for i, it in enumerate(top, 1):
+
+    bucket = it.get("bucket", "BUY")
+    emoji = "🟢" if bucket == "BUY" else "🟡"
+
+lines.append(f"{i}) {emoji} [{bucket}] [CC] {it['title']}")
             lines.append(f"{i}) [cc] {it['title']}")
             lines.append(f"   💶 Compra: {it['buy']:.2f}€ | 🎯 Cierre est.: {it['close']:.2f}€")
             lines.append(
