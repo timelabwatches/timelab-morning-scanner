@@ -857,9 +857,6 @@ def run() -> None:
                 )
             continue
 
-        close_est = estimate_close_eur(target, listing.cond, listing.title)
-
-        close_est = estimate_close_eur(target, listing.cond, listing.title)
 
         close_est = estimate_close_eur(target, listing.cond, listing.title)
 
