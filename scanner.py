@@ -820,9 +820,16 @@ def main():
         best_ms = -1
         best_t: Optional[TargetModel] = None
         for t in targets:
-            if not title_passes_target_filters(li.title, t):
-                continue
-            ms = compute_match_score(li.title, t)
+            if not title_passes_target_filters(detail_text, t):
+              continue
+
+    # block microbrands contaminating generic Seiko/Tissot targets
+    title_norm = norm(detail_text)
+    if any(x in title_norm for x in MICROBRAND_BAD_TERMS):
+        if "SEIKO" in t.key or "TISSOT" in t.key:
+            continue
+
+    ms = compute_match_score(li.title, t)
             if ms > best_ms:
                 best_ms = ms
                 best_t = t
