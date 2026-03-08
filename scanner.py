@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TIMELAB -- eBay wristwatch scanner (improved version)
+TIMELAB — eBay wristwatch scanner (improved version)
 
 Fixes included (v5 hotfix):
 1) Global hard-reject for accessories (straps/bracelets/links/clasps/manuals/etc.) to avoid false positives.
@@ -147,7 +147,6 @@ GLOBAL_HARD_BAD_TERMS: Set[str] = {
     "non funziona", "guasto", "ne fonctionne pas", "defekt", "funktioniert nicht",
     "missing",
     "replica", "copy", "imitacion", "imitación", "imitation", "fake",
-    "cuarzo",
     "booklet", "manual", "instructions",
     "for parts", "parts only", "movement only", "only movement", "solo movimiento",
 }
@@ -463,6 +462,28 @@ def estimate_net_profit(buy: float, ship: float, close: float) -> Tuple[float, f
     net = profit_bt - tax
     roi = net / max(1.0, cost)
     return net, roi
+
+
+def count_keyword_hits(text: str, target: TargetModel) -> int:
+    t = norm(text)
+    kws = [norm(k) for k in (target.keywords or []) if norm(k)]
+    if not kws:
+        return 0
+    model_kws = kws[1:] if len(kws) > 1 else kws
+    return sum(1 for kw in model_kws if kw and kw in t)
+
+
+def derive_price_confidence(li: Listing) -> int:
+    conf = 55
+    if li.shipping_eur >= 0:
+        conf += 10
+    if li.short_desc:
+        conf += 15
+    if li.condition:
+        conf += 10
+    if li.category_id:
+        conf += 5
+    return max(25, min(95, conf))
 
 
 # -----------------------------------------------------------------------------
@@ -792,8 +813,6 @@ def main():
         if global_noise_reject(li.title) is not None:
             continue
 
-        identity = resolve_listing_identity(detail_text, None, model_master)
-
         best_ms = -1
         best_t: Optional[TargetModel] = None
         for t in targets:
@@ -832,13 +851,18 @@ def main():
     sent_count = 0
 
     for li in listings:
+        detail_text = " ".join([
+            li.title or "",
+            li.short_desc or "",
+            li.condition or "",
+        ]).strip()
+
         if not is_eu_location(li.location_text):
             continue
 
         if li.category_id and EBAY_ALLOWED_CATEGORY_IDS and li.category_id not in EBAY_ALLOWED_CATEGORY_IDS:
             continue
 
-        detail_text = li.title + (" " + li.short_desc if li.short_desc else "") + (" " + li.condition if li.condition else "")
         if global_noise_reject(detail_text) is not None:
             continue
 
@@ -926,10 +950,14 @@ def main():
         if gate == "REVIEW":
             bucket = "REVIEW"
 
-        confidence = compute_confidence(78, derive_match_confidence(best_ms, 2, int(brand_ctx_final.get("penalty", 0))), derive_close_estimate_confidence(flags, used_p75=flags.get("is_full_set", False), condition_score=cscore))
+        keyword_hits = count_keyword_hits(detail_text, best_t)
+        match_conf = derive_match_confidence(best_ms, keyword_hits, int(brand_ctx_final.get("penalty", 0)))
+        price_conf = derive_price_confidence(li)
+        close_conf = derive_close_estimate_confidence(flags, used_p75=flags.get("is_full_set", False), condition_score=cscore)
+        confidence = compute_confidence(price_conf, match_conf, close_conf)
         explain = {
             "target": best_t.key,
-            "keyword_hits": 2,
+            "keyword_hits": keyword_hits,
             "penalties": int(brand_ctx_final.get("penalty", 0)),
             "comparables": {"p50": best_t.catwiki_p50, "p75": best_t.catwiki_p75},
             "bucket_reason": explain_bucket(opp_score, bucket, net, roi, best_ms, int(brand_ctx_final.get("penalty", 0))),
@@ -947,7 +975,7 @@ def main():
     top = candidates[:10]
 
     header = [
-        f"🕗 TIMELAB Morning Scan -- TOP {len(top) if top else 0} (eBay API {EBAY_MARKETPLACE_ID})",
+        f"🕗 TIMELAB Morning Scan — TOP {len(top) if top else 0} (eBay API {EBAY_MARKETPLACE_ID})",
         f"{now}",
         "",
         f"Target list version: {target_version or 'n/a'} | targets={len(targets)}",
