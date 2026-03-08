@@ -1,0 +1,15 @@
+{
+  "comparables": [
+    {"source":"Catawiki","date_closed":"2026-01-10","target_id":"TISSOT_SEASTAR_POWERMATIC80","brand":"Tissot","model":"Seastar Powermatic 80","reference":"T120407","condition":"good","full_set":true,"hammer_or_sale_price":680,"currency":"EUR","shipping_included":false,"manual_confidence":90},
+    {"source":"Catawiki","date_closed":"2026-01-20","target_id":"TISSOT_SEASTAR_POWERMATIC80","brand":"Tissot","model":"Seastar Powermatic 80","reference":"T120407","condition":"good","full_set":false,"hammer_or_sale_price":640,"currency":"EUR","shipping_included":false,"manual_confidence":88},
+    {"source":"eBay sold","date_closed":"2026-02-11","target_id":"TISSOT_SEASTAR_POWERMATIC80","brand":"Tissot","model":"Seastar Powermatic 80","reference":"T120407","condition":"excellent","full_set":true,"hammer_or_sale_price":710,"currency":"EUR","shipping_included":true,"manual_confidence":80},
+    {"source":"Catawiki","date_closed":"2026-02-15","target_id":"TISSOT_SEASTAR_POWERMATIC80","brand":"Tissot","model":"Seastar Powermatic 80","reference":"T120407","condition":"worn","full_set":false,"hammer_or_sale_price":590,"currency":"EUR","shipping_included":false,"manual_confidence":75},
+    {"source":"manual","date_closed":"2026-03-01","target_id":"TISSOT_SEASTAR_POWERMATIC80","brand":"Tissot","model":"Seastar Powermatic 80","reference":"T120407","condition":"good","full_set":true,"hammer_or_sale_price":695,"currency":"EUR","shipping_included":false,"manual_confidence":82},
+
+    {"source":"Catawiki","date_closed":"2026-01-18","target_id":"SEIKO_PROSPEX_TURTLE_AUTO","brand":"Seiko","model":"Prospex Turtle","reference":"SRP777","condition":"good","full_set":false,"hammer_or_sale_price":510,"currency":"EUR","shipping_included":false,"manual_confidence":87},
+    {"source":"eBay sold","date_closed":"2026-02-06","target_id":"SEIKO_PROSPEX_TURTLE_AUTO","brand":"Seiko","model":"Prospex Turtle","reference":"SRPE93","condition":"excellent","full_set":true,"hammer_or_sale_price":575,"currency":"EUR","shipping_included":true,"manual_confidence":81},
+    {"source":"Catawiki","date_closed":"2026-02-26","target_id":"SEIKO_PROSPEX_TURTLE_AUTO","brand":"Seiko","model":"Prospex Turtle","reference":"SRP777","condition":"good","full_set":true,"hammer_or_sale_price":560,"currency":"EUR","shipping_included":false,"manual_confidence":90},
+    {"source":"manual","date_closed":"2026-02-28","target_id":"SEIKO_PROSPEX_TURTLE_AUTO","brand":"Seiko","model":"Prospex Turtle","reference":"SRPE93","condition":"good","full_set":false,"hammer_or_sale_price":520,"currency":"EUR","shipping_included":false,"manual_confidence":78},
+    {"source":"manual","date_closed":"2026-03-03","target_id":"SEIKO_PROSPEX_TURTLE_AUTO","brand":"Seiko","model":"Prospex Turtle","reference":"SRP777","condition":"excellent","full_set":true,"hammer_or_sale_price":590,"currency":"EUR","shipping_included":false,"manual_confidence":84}
+  ]
+}
