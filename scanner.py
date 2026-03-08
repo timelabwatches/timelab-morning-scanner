@@ -821,7 +821,7 @@ def main():
         best_t: Optional[TargetModel] = None
         for t in targets:
             if not title_passes_target_filters(detail_text, t):
-              continue
+                continue
 
     # block microbrands contaminating generic Seiko/Tissot targets
     title_norm = norm(detail_text)
