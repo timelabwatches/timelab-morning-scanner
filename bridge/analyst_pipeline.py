@@ -10,6 +10,7 @@ from analyzer.infer_movement_hint import infer_movement_hint
 from analyzer.infer_reference import infer_reference
 from analyzer.infer_watch_type import infer_watch_type
 from analyzer.score_record import score_record
+from auction.auction_price_engine import apply_auction_price_engine
 from decision.decision_engine import apply_decision_engine
 from economics.profit_engine import apply_profit_engine
 from evaluator.classify_candidate import classify_candidate
@@ -17,10 +18,7 @@ from evaluator.classify_candidate import classify_candidate
 
 def analyze_record(record: dict) -> dict:
     """
-    Simplified TIMELAB analyst pipeline for eBay candidates.
-    Mirrors the structure of timelab-watch-analyst:
-    brand -> reference -> model -> condition/gender/type -> movement ->
-    flags -> reference KB -> economics -> score -> candidate class -> decision
+    TIMELAB analyst pipeline adapted for eBay candidates.
     """
 
     brand = infer_brand(record)
@@ -66,18 +64,7 @@ def analyze_record(record: dict) -> dict:
     analyzed.update(infer_flags(analyzed))
 
     analyzed = apply_reference_kb(analyzed)
-
-    # Auction estimate may already be provided upstream.
-    # If not, keep a safe empty structure so economics/decision do not break.
-    if "auction_estimate" not in analyzed:
-        analyzed["auction_estimate"] = {
-            "price_estimate_available": False,
-            "expected_hammer": None,
-            "conservative_hammer": None,
-            "optimistic_hammer": None,
-            "price_confidence": "low",
-        }
-
+    analyzed = apply_auction_price_engine(analyzed)
     analyzed = apply_profit_engine(analyzed)
 
     analyzed["score"] = score_record(analyzed)
