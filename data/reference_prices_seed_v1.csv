@@ -1,1 +1,81 @@
-hhsj
+brand,family,reference,p25,p50,p75,liquidity,source_title
+baume,clifton,10059,1700.0,2100.0,2500.0,medium,merged_sources
+baume,clifton,10123,1800.0,2200.0,2600.0,medium,merged_sources
+baume,classima,10214,850.0,1050.0,1250.0,medium,merged_sources
+baume,classima,10324,900.0,1100.0,1300.0,medium,merged_sources
+baume,riviera,10468,1400.0,1700.0,2100.0,medium,merged_sources
+baume,riviera,10660,1500.0,1800.0,2200.0,medium,merged_sources
+bulova,classic,96b104,150.0,210.0,270.0,medium,merged_sources
+bulova,lunar pilot,96b251,350.0,420.0,500.0,medium,merged_sources
+bulova,lunar pilot,96b258,360.0,440.0,520.0,medium,merged_sources
+bulova,marine star,96b272,180.0,240.0,300.0,medium,merged_sources
+bulova,precisionist,98b152,280.0,350.0,420.0,medium,merged_sources
+bulova,marine star,98b203,190.0,250.0,320.0,medium,merged_sources
+bulova,precisionist,98b229,300.0,380.0,450.0,medium,merged_sources
+bulova,marine star,98b301,200.0,260.0,330.0,medium,merged_sources
+casio,g-shock,dw5600,50.0,80.0,110.0,medium,merged_sources
+casio,g-shock,dw6900,55.0,85.0,120.0,medium,merged_sources
+casio,edifice,ef527,120.0,170.0,220.0,medium,merged_sources
+casio,edifice,ef539,110.0,150.0,200.0,medium,merged_sources
+casio,edifice,ef550,130.0,180.0,240.0,medium,merged_sources
+casio,edifice,eqb1000,200.0,260.0,330.0,medium,merged_sources
+casio,g-shock,ga100,60.0,90.0,120.0,medium,merged_sources
+casio,g-shock,ga110,70.0,100.0,130.0,medium,merged_sources
+casio,g-shock,ga2100,90.0,120.0,160.0,medium,merged_sources
+casio,g-shock,gm2100,140.0,180.0,230.0,medium,merged_sources
+certina,ds podium,c0014171105700,260.0,320.0,390.0,medium,merged_sources
+certina,ds-1,c0064071105100,300.0,380.0,460.0,medium,merged_sources
+certina,ds-1,c0064281603100,320.0,400.0,480.0,medium,merged_sources
+certina,ds-2,c0244071605100,260.0,330.0,410.0,medium,merged_sources
+certina,ds-2,c0244101605100,240.0,310.0,380.0,medium,merged_sources
+certina,ds action,c0324071104100,500.0,630.0,780.0,medium,merged_sources
+certina,ds action,c0328071104100,480.0,600.0,720.0,medium,merged_sources
+certina,ds podium,c0344171605700,280.0,350.0,420.0,medium,merged_sources
+certina,ds,ds1,200.0,300.0,400.0,medium,merged_sources
+certina,ds,ds2,220.0,320.0,420.0,medium,merged_sources
+certina,ds,ds3,240.0,340.0,440.0,medium,merged_sources
+certina,ds,dsfirst,180.0,260.0,340.0,medium,merged_sources
+citizen,eco-drive,bm8180,160.0,210.0,260.0,medium,merged_sources
+citizen,eco-drive,bm8475,150.0,200.0,260.0,medium,merged_sources
+citizen,promaster,bn0150,250.0,320.0,380.0,medium,merged_sources
+citizen,promaster,bn0190,270.0,340.0,410.0,medium,merged_sources
+citizen,promaster,bn0200,260.0,330.0,410.0,medium,merged_sources
+citizen,promaster,bn0220,270.0,340.0,420.0,medium,merged_sources
+citizen,eco-drive,ca0641,170.0,230.0,290.0,medium,merged_sources
+citizen,eco-drive,ca0649,190.0,250.0,320.0,medium,merged_sources
+citizen,eco-drive,ca0690,180.0,240.0,300.0,medium,merged_sources
+citizen,eco-drive,ca4210,180.0,230.0,290.0,medium,merged_sources
+citizen,eco-drive,ca4420,190.0,250.0,310.0,medium,merged_sources
+citizen,tsuyosa,nj0150,300.0,360.0,420.0,medium,merged_sources
+citizen,tsuyosa,nj0151,300.0,370.0,430.0,medium,merged_sources
+citizen,promaster,ny0040,220.0,290.0,360.0,medium,merged_sources
+citizen,promaster,ny0075,230.0,300.0,380.0,medium,merged_sources
+citizen,promaster,ny0085,250.0,320.0,390.0,medium,merged_sources
+citizen,promaster,ny0100,240.0,310.0,390.0,medium,merged_sources
+festina,chronograph,f20330,80.0,120.0,160.0,medium,merged_sources
+festina,chronograph,f20339,80.0,115.0,150.0,medium,merged_sources
+festina,chronograph,f20363,90.0,130.0,170.0,medium,merged_sources
+festina,sport,f20445,70.0,100.0,140.0,medium,merged_sources
+festina,sport,f20463,75.0,105.0,150.0,medium,merged_sources
+festina,automatic,f20531,120.0,170.0,230.0,medium,merged_sources
+hamilton,ventura,h24411732,650.0,780.0,950.0,medium,merged_sources
+hamilton,ventura,h244121,700.0,850.0,1000.0,medium,merged_sources
+hamilton,jazzmaster,h32505141,520.0,650.0,800.0,medium,merged_sources
+hamilton,jazzmaster,h32515555,600.0,750.0,900.0,medium,merged_sources
+hamilton,jazzmaster,h32616133,700.0,850.0,1000.0,medium,merged_sources
+hamilton,jazzmaster,h32645555,650.0,800.0,950.0,medium,merged_sources
+hamilton,khaki field,h68401735,320.0,390.0,470.0,medium,merged_sources
+hamilton,khaki field,h68411533,350.0,420.0,520.0,medium,merged_sources
+hamilton,khaki field,h70455533,450.0,550.0,650.0,medium,merged_sources
+hamilton,khaki field,h70555533,500.0,600.0,720.0,medium,merged_sources
+hamilton,khaki field,h70605731,650.0,780.0,920.0,medium,merged_sources
+hamilton,khaki field,h70605943,650.0,780.0,920.0,medium,merged_sources
+hamilton,khaki navy,h82305931,600.0,720.0,850.0,medium,merged_sources
+hamilton,khaki navy,h82335131,520.0,640.0,760.0,medium,merged_sources
+hamilton,khaki navy,h82505140,550.0,680.0,820.0,medium,merged_sources
+junghans,max bill,0273400,620.0,760.0,900.0,medium,merged_sources
+junghans,max bill,0273500,650.0,800.0,950.0,medium,merged_sources
+junghans,meister,0274121,850.0,1050.0,1250.0,medium,merged_sources
+junghans,meister,0274526,950.0,1150.0,1350.0,medium,merged_sources
+junghans,meister,0277200,900.0,1100.0,1300.0,medium,merged_sources
+junghans,max bill,0414463,750.0,900.0,1100.0,medium,merged_sources
