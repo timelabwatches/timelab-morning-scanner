@@ -9,6 +9,7 @@ from clients.ebay_client import (
     search_listings,
 )
 from clients.telegram_client import send_crash_message, send_message
+from pipeline.comparables import get_target_stats, load_comparables
 from pipeline.cooldown import (
     is_in_cooldown,
     is_repost_due_to_price_drop,
@@ -16,8 +17,9 @@ from pipeline.cooldown import (
     save_state,
     update_state,
 )
-from pipeline.filters import reject_reason, title_passes_target_filters
-from pipeline.targets import TargetModel, load_target_bundle
+from pipeline.filters import reject_reason
+from pipeline.knowledge_base import load_model_master, resolve_listing_identity
+from pipeline.targets import load_target_bundle
 from pipeline.valuation import (
     estimate_close_price,
     estimate_net_profit,
@@ -49,35 +51,41 @@ def build_listing_text(listing: EbayListing) -> str:
     return " ".join(part.strip() for part in parts if part.strip()).strip()
 
 
-def find_best_target(listing_text: str, targets: list[TargetModel]) -> tuple[TargetModel | None, int]:
-    text_lower = listing_text.lower()
+def choose_close_estimate(
+    listing_text: str,
+    listing_price: float,
+    stats: dict,
+) -> float:
+    p50 = float(stats.get("p50", 0.0) or 0.0)
+    p75 = float(stats.get("p75", 0.0) or 0.0)
+    sample_size = int(stats.get("sample_size", 0) or 0)
 
-    best_target = None
-    best_score = -1
+    if sample_size <= 0:
+        return round(max(listing_price * 1.30, listing_price + 70), 2)
 
-    for target in targets:
-        if not title_passes_target_filters(
-            text=listing_text,
-            must_include=target.must_include or [],
-            must_exclude=target.must_exclude or [],
-            keywords=target.keywords or [],
-        ):
-            continue
+    return estimate_close_price(
+        price_eur=listing_price,
+        target_p50=p50,
+        target_p75=p75,
+        listing_text=listing_text,
+    )
 
-        score = 0
-        for keyword in target.keywords or []:
-            if keyword and keyword.lower() in text_lower:
-                score += 1
 
-        for ref in target.refs or []:
-            if ref and ref.lower() in text_lower:
-                score += 3
+def passes_identity_gate(identity: dict, min_match_score: int) -> bool:
+    score = int(identity.get("match_score", 0) or 0)
+    band = str(identity.get("match_confidence_band", "very_low"))
+    ambiguity = bool(identity.get("ambiguity", True))
 
-        if score > best_score:
-            best_score = score
-            best_target = target
+    if score < min_match_score:
+        return False
 
-    return best_target, best_score
+    if band not in {"high", "medium"}:
+        return False
+
+    if ambiguity:
+        return False
+
+    return True
 
 
 def format_alerts(
@@ -110,7 +118,8 @@ def format_alerts(
                     f"💶 Buy: {alert['price']:.2f}€ | 🚚 Shipping: {alert['shipping']:.2f}€",
                     f"🎯 Est. close: {alert['est_close']:.2f}€",
                     f"✅ Net est.: {alert['net_profit']:.2f}€ | ROI: {int(alert['roi'] * 100)}%",
-                    f"🧩 Target: {alert['target']} | Match: {alert['match_score']}",
+                    f"🧩 Target: {alert['target_id']} | Match: {alert['match_score']} ({alert['match_band']})",
+                    f"📊 sample={alert['sample_size']} | p50={alert['p50']:.2f}€ | p75={alert['p75']:.2f}€ | conf={alert['stats_confidence']}",
                     f"📍 {alert['location'] or 'Unknown location'}",
                     f"🧾 Condition: {alert['condition'] or 'n/a'} | Category: {alert['category'] or 'n/a'}",
                     f"🔗 {alert['url']}",
@@ -128,7 +137,8 @@ def format_alerts(
                     f"{idx}) {item['title']}",
                     f"💶 Buy: {item['price']:.2f}€ | 🎯 Est. close: {item['est_close']:.2f}€",
                     f"✅ Net est.: {item['net_profit']:.2f}€ | ROI: {int(item['roi'] * 100)}%",
-                    f"🧩 Target: {item['target']} | Match: {item['match_score']}",
+                    f"🧩 Target: {item['target_id']} | Match: {item['match_score']} ({item['match_band']})",
+                    f"📊 sample={item['sample_size']} | p50={item['p50']:.2f}€ | p75={item['p75']:.2f}€ | conf={item['stats_confidence']}",
                     f"🔗 {item['url']}",
                     "",
                 ]
@@ -142,6 +152,9 @@ def main() -> None:
     validate_settings(settings)
 
     targets, meta = load_target_bundle(settings.target_list_path)
+    models = load_model_master(settings.model_master_path)
+    comparables = load_comparables(settings.comparables_path)
+
     token = get_oauth_token(settings)
     state = load_state(settings.state_path)
 
@@ -207,21 +220,16 @@ def main() -> None:
             if listing.category_id not in settings.ebay_allowed_category_ids:
                 continue
 
-        best_target, match_score = find_best_target(listing_text, targets)
-        if best_target is None:
+        identity = resolve_listing_identity(listing_text, models)
+        if not identity.get("target_id"):
             continue
 
-        if match_score < 1:
-            continue
+        stats = get_target_stats(identity["target_id"], comparables)
 
-        if best_target.buy_max > 0 and listing.price_eur > (best_target.buy_max * settings.buy_max_mult):
-            continue
-
-        est_close = estimate_close_price(
-            price_eur=listing.price_eur,
-            target_p50=best_target.catwiki_p50,
-            target_p75=best_target.catwiki_p75,
+        est_close = choose_close_estimate(
             listing_text=listing_text,
+            listing_price=listing.price_eur,
+            stats=stats,
         )
 
         net_profit, roi = estimate_net_profit(
@@ -236,19 +244,32 @@ def main() -> None:
             effective_tax_rate_on_profit=settings.effective_tax_rate_on_profit,
         )
 
-        raw_candidates.append(
-            {
-                "title": listing.title,
-                "price": listing.price_eur,
-                "shipping": listing.shipping_eur,
-                "est_close": est_close,
-                "net_profit": net_profit,
-                "roi": roi,
-                "target": best_target.key,
-                "match_score": match_score,
-                "url": listing.url,
-            }
-        )
+        candidate_payload = {
+            "title": listing.title,
+            "price": listing.price_eur,
+            "shipping": listing.shipping_eur,
+            "est_close": est_close,
+            "net_profit": net_profit,
+            "roi": roi,
+            "target_id": identity.get("target_id", ""),
+            "match_score": int(identity.get("match_score", 0) or 0),
+            "match_band": identity.get("match_confidence_band", "very_low"),
+            "sample_size": int(stats.get("sample_size", 0) or 0),
+            "p50": float(stats.get("p50", 0.0) or 0.0),
+            "p75": float(stats.get("p75", 0.0) or 0.0),
+            "stats_confidence": int(stats.get("confidence_score", 0) or 0),
+            "location": listing.location_text,
+            "condition": listing.condition,
+            "category": listing.category_id,
+            "url": listing.url,
+        }
+        raw_candidates.append(candidate_payload)
+
+        if not passes_identity_gate(identity, settings.min_match_score):
+            continue
+
+        if int(stats.get("sample_size", 0) or 0) < 2:
+            continue
 
         if not passes_basic_profit_filters(
             net_profit=net_profit,
@@ -277,23 +298,7 @@ def main() -> None:
         ):
             repost_count += 1
 
-        alerts.append(
-            {
-                "title": listing.title,
-                "price": listing.price_eur,
-                "shipping": listing.shipping_eur,
-                "est_close": est_close,
-                "net_profit": net_profit,
-                "roi": roi,
-                "target": best_target.key,
-                "match_score": match_score,
-                "location": listing.location_text,
-                "condition": listing.condition,
-                "category": listing.category_id,
-                "url": listing.url,
-            }
-        )
-
+        alerts.append(candidate_payload)
         update_state(listing.item_id, listing.price_eur, state)
         sent_count += 1
 
