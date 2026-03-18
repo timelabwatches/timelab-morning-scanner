@@ -1,7 +1,7 @@
 from pipeline.comparables import get_target_stats
 from pipeline.filters import reject_reason
-from pipeline.knowledge_base import resolve_listing_identity
 from pipeline.valuation import estimate_close_price, estimate_net_profit
+from bridge.identity import IdentityEngine
 
 
 def passes_identity_gate(identity: dict, min_match_score: int) -> bool:
@@ -39,7 +39,7 @@ def choose_close_estimate(listing_text: str, listing_price: float, stats: dict) 
 
 def evaluate_candidate(
     candidate: dict,
-    models: list[dict],
+    identity_engine: IdentityEngine,
     comparables: list[dict],
     settings,
 ) -> dict | None:
@@ -54,7 +54,7 @@ def evaluate_candidate(
     if reason is not None:
         return None
 
-    identity = resolve_listing_identity(raw_text, models)
+    identity = identity_engine.resolve(raw_text)
     target_id = identity.get("target_id")
     if not target_id:
         return None
