@@ -9,7 +9,7 @@ from clients.ebay_client import (
     search_listings,
 )
 from clients.telegram_client import send_crash_message, send_message
-from pipeline.comparables import get_target_stats, load_comparables
+from pipeline.adapter_ebay import ebay_listing_to_candidate
 from pipeline.cooldown import (
     is_in_cooldown,
     is_repost_due_to_price_drop,
@@ -17,14 +17,10 @@ from pipeline.cooldown import (
     save_state,
     update_state,
 )
-from pipeline.filters import reject_reason
-from pipeline.knowledge_base import load_model_master, resolve_listing_identity
+from pipeline.engine import build_alert_payload, evaluate_candidate, passes_decision_gate
+from pipeline.knowledge_base import load_model_master
+from pipeline.comparables import load_comparables
 from pipeline.targets import load_target_bundle
-from pipeline.valuation import (
-    estimate_close_price,
-    estimate_net_profit,
-    passes_basic_profit_filters,
-)
 
 
 def dedupe_listings(listings: list[EbayListing]) -> list[EbayListing]:
@@ -40,52 +36,6 @@ def dedupe_listings(listings: list[EbayListing]) -> list[EbayListing]:
         output.append(listing)
 
     return output
-
-
-def build_listing_text(listing: EbayListing) -> str:
-    parts = [
-        listing.title or "",
-        listing.short_desc or "",
-        listing.condition or "",
-    ]
-    return " ".join(part.strip() for part in parts if part.strip()).strip()
-
-
-def choose_close_estimate(
-    listing_text: str,
-    listing_price: float,
-    stats: dict,
-) -> float:
-    p50 = float(stats.get("p50", 0.0) or 0.0)
-    p75 = float(stats.get("p75", 0.0) or 0.0)
-    sample_size = int(stats.get("sample_size", 0) or 0)
-
-    if sample_size <= 0:
-        return round(max(listing_price * 1.30, listing_price + 70), 2)
-
-    return estimate_close_price(
-        price_eur=listing_price,
-        target_p50=p50,
-        target_p75=p75,
-        listing_text=listing_text,
-    )
-
-
-def passes_identity_gate(identity: dict, min_match_score: int) -> bool:
-    score = int(identity.get("match_score", 0) or 0)
-    band = str(identity.get("match_confidence_band", "very_low"))
-    ambiguity = bool(identity.get("ambiguity", True))
-
-    if score < min_match_score:
-        return False
-
-    if band not in {"high", "medium"}:
-        return False
-
-    if ambiguity:
-        return False
-
-    return True
 
 
 def format_alerts(
@@ -206,77 +156,24 @@ def main() -> None:
     sent_count = 0
 
     for listing in final_listings:
-        listing_text = build_listing_text(listing)
-
-        reason = reject_reason(
-            text=listing_text,
-            location_text=listing.location_text,
-            eu_only=True,
-        )
-        if reason is not None:
-            continue
-
         if listing.category_id and settings.ebay_allowed_category_ids:
             if listing.category_id not in settings.ebay_allowed_category_ids:
                 continue
 
-        identity = resolve_listing_identity(listing_text, models)
-        if not identity.get("target_id"):
-            continue
-
-        stats = get_target_stats(identity["target_id"], comparables)
-
-        est_close = choose_close_estimate(
-            listing_text=listing_text,
-            listing_price=listing.price_eur,
-            stats=stats,
+        candidate = ebay_listing_to_candidate(listing)
+        result = evaluate_candidate(
+            candidate=candidate,
+            models=models,
+            comparables=comparables,
+            settings=settings,
         )
-
-        net_profit, roi = estimate_net_profit(
-            buy_price=listing.price_eur,
-            shipping_cost=listing.shipping_eur,
-            estimated_close=est_close,
-            catwiki_commission=settings.catwiki_commission,
-            payment_processing=settings.payment_processing,
-            packaging_eur=settings.packaging_eur,
-            misc_eur=settings.misc_eur,
-            ship_arbitrage_eur=settings.ship_arbitrage_eur,
-            effective_tax_rate_on_profit=settings.effective_tax_rate_on_profit,
-        )
-
-        candidate_payload = {
-            "title": listing.title,
-            "price": listing.price_eur,
-            "shipping": listing.shipping_eur,
-            "est_close": est_close,
-            "net_profit": net_profit,
-            "roi": roi,
-            "target_id": identity.get("target_id", ""),
-            "match_score": int(identity.get("match_score", 0) or 0),
-            "match_band": identity.get("match_confidence_band", "very_low"),
-            "sample_size": int(stats.get("sample_size", 0) or 0),
-            "p50": float(stats.get("p50", 0.0) or 0.0),
-            "p75": float(stats.get("p75", 0.0) or 0.0),
-            "stats_confidence": int(stats.get("confidence_score", 0) or 0),
-            "location": listing.location_text,
-            "condition": listing.condition,
-            "category": listing.category_id,
-            "url": listing.url,
-        }
-        raw_candidates.append(candidate_payload)
-
-        if not passes_identity_gate(identity, settings.min_match_score):
+        if result is None:
             continue
 
-        if int(stats.get("sample_size", 0) or 0) < 2:
-            continue
+        payload = build_alert_payload(result)
+        raw_candidates.append(payload)
 
-        if not passes_basic_profit_filters(
-            net_profit=net_profit,
-            roi=roi,
-            min_net_eur=settings.min_net_eur,
-            min_net_roi=settings.min_net_roi,
-        ):
+        if not passes_decision_gate(result, settings):
             continue
 
         if is_in_cooldown(
@@ -298,7 +195,7 @@ def main() -> None:
         ):
             repost_count += 1
 
-        alerts.append(candidate_payload)
+        alerts.append(payload)
         update_state(listing.item_id, listing.price_eur, state)
         sent_count += 1
 
