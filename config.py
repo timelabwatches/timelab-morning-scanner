@@ -65,6 +65,7 @@ class Settings:
 
     target_list_path: str
     model_master_path: str
+    comparables_path: str
     target_stats_path: str
     state_path: str
 
@@ -106,6 +107,7 @@ def load_settings() -> Settings:
         price_drop_repost=env_float("PRICE_DROP_REPOST", 0.10),
         target_list_path=env_str("TARGET_LIST_PATH", "target_list.json"),
         model_master_path=env_str("MODEL_MASTER_PATH", "data/model_master.json"),
+        comparables_path=env_str("COMPARABLES_PATH", "data/market_comp_db.json"),
         target_stats_path=env_str("TARGET_STATS_PATH", "data/target_stats.json"),
         state_path=env_str("EBAY_STATE_PATH", "state/state_ebay.json"),
     )
@@ -148,6 +150,10 @@ def validate_settings(settings: Settings) -> None:
         errors.append("EBAY_ALLOWED_CATEGORY_IDS cannot be empty")
     if not settings.target_list_path:
         errors.append("Missing TARGET_LIST_PATH")
+    if not settings.model_master_path:
+        errors.append("Missing MODEL_MASTER_PATH")
+    if not settings.comparables_path:
+        errors.append("Missing COMPARABLES_PATH")
     if not settings.state_path:
         errors.append("Missing EBAY_STATE_PATH")
 
