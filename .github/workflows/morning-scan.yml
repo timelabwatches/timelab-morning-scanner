@@ -57,6 +57,7 @@ jobs:
           PRICE_DROP_REPOST: "0.10"
           TARGET_LIST_PATH: "target_list.json"
           MODEL_MASTER_PATH: "data/model_master.json"
+          COMPARABLES_PATH: "data/market_comp_db.json"
           TARGET_STATS_PATH: "data/target_stats.json"
           EBAY_STATE_PATH: "state/state_ebay.json"
         run: |
