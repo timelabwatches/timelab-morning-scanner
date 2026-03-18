@@ -26,6 +26,7 @@ WATCH_INDICATORS = {
     "automatic", "automatik", "automatique",
     "chronograph", "chrono", "gmt",
     "date", "diver", "sub", "seamaster", "aquaracer", "hydroconquest",
+    "orologio uomo", "orologio donna",
 }
 
 ACCESSORY_CONTEXT_TERMS = {
@@ -47,9 +48,9 @@ INCOMPLETE_HARD_TERMS = {
     "catalog", "book",
     "box only", "only box", "with box only", "solo caja", "caja sola", "caja solo",
     "for parts", "parts only", "movement only", "only movement", "solo movimiento",
-    "solo calibro", "solo calibre",
+    "solo calibro", "solo calibre", "solo movimiento",
     "spares", "ricambi", "pièces", "pieces", "pieza", "piezas", "ersatzteile",
-    "uhrwerk", "movimiento", "movement",
+    "uhrwerk", "movimiento", "movement", "movimento",
 }
 
 GLOBAL_HARD_BAD_TERMS = {
@@ -68,6 +69,14 @@ AUTO_CONTRADICTIONS = {
     "manual", "hand-wound", "hand wound", "handwound",
     "carica manuale", "a carica manuale", "remontage manuel", "handaufzug",
     "solar", "kinetic",
+}
+
+LOW_QUALITY_TERMS = {
+    "read the description",
+    "see description",
+    "please read",
+    "balance ok",
+    "working ok",
 }
 
 
@@ -138,16 +147,18 @@ def looks_like_movement_or_parts(text: str) -> bool:
     hard_terms = {
         "for parts", "parts only", "movement only", "only movement",
         "solo movimiento", "solo calibro", "solo calibre",
+        "movimento", "uhrwerk",
     }
     if any(term in t for term in hard_terms):
         return True
 
-    movement_terms = {"movement", "movimiento", "uhrwerk", "werk", "caliber", "calibre"}
+    movement_terms = {"movement", "movimiento", "uhrwerk", "werk", "caliber", "calibre", "movimento"}
     if has_any(t, movement_terms):
-        watch_words = {"watch", "reloj", "orologio", "montre", "uhr"}
-        if not has_any(t, watch_words):
-            return True
-        if "movement" in t and not any(x in t for x in {"automatic", "chronograph", "gmt", "diver", "date"}):
+        full_watch_terms = {
+            "case", "caja", "boite", "boîtier", "dial", "esfera", "quadrante",
+            "hands", "manecillas", "bracelet", "strap", "correa"
+        }
+        if not has_any(t, full_watch_terms):
             return True
 
     return False
@@ -156,6 +167,11 @@ def looks_like_movement_or_parts(text: str) -> bool:
 def has_incomplete_hard_terms(text: str) -> bool:
     t = norm(text)
     return any(term in t for term in INCOMPLETE_HARD_TERMS)
+
+
+def is_low_quality_listing(text: str) -> bool:
+    t = norm(text)
+    return any(term in t for term in LOW_QUALITY_TERMS)
 
 
 def reject_reason(text: str, location_text: str = "", eu_only: bool = True) -> Optional[str]:
@@ -178,6 +194,9 @@ def reject_reason(text: str, location_text: str = "", eu_only: bool = True) -> O
 
     if has_any(t, GLOBAL_HARD_BAD_TERMS):
         return "hard_bad_terms"
+
+    if is_low_quality_listing(t):
+        return "low_quality_listing"
 
     return None
 
