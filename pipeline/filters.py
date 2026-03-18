@@ -1,3 +1,5 @@
+# pipeline/filters.py
+
 import re
 from typing import Optional
 
@@ -22,7 +24,7 @@ GLOBAL_ACCESSORY_TERMS = {
 }
 
 WATCH_INDICATORS = {
-    "watch", "reloj", "orologio", "montre", "uhr",
+    "watch", "wristwatch", "reloj", "orologio", "montre", "uhr",
     "automatic", "automatik", "automatique",
     "chronograph", "chrono", "gmt",
     "date", "diver", "sub", "seamaster", "aquaracer", "hydroconquest",
@@ -43,14 +45,12 @@ INCOMPLETE_HARD_TERMS = {
     "movimento mancante", "solo cassa", "cassa vuota",
     "boîtier seul", "boitier seul", "sans mecanisme", "sans mécanisme", "sans mouvement",
     "ohne uhrwerk", "ohne werk", "gehäuse ohne", "gehaeuse ohne",
-    "instructions", "instruction", "manual", "manuale", "booklet", "libretto",
-    "operation", "operating", "manuel", "gebrauchsanleitung", "catalogue", "catalogo",
-    "catalog", "book",
     "box only", "only box", "with box only", "solo caja", "caja sola", "caja solo",
     "for parts", "parts only", "movement only", "only movement", "solo movimiento",
-    "solo calibro", "solo calibre", "solo movimiento",
+    "solo calibro", "solo calibre",
     "spares", "ricambi", "pièces", "pieces", "pieza", "piezas", "ersatzteile",
-    "uhrwerk", "movimiento", "movement", "movimento",
+    "watch case", "case only", "dial only", "only dial", "boitier", "boîtier",
+    "solo esfera", "only hands", "set of hands", "crown only", "stem only",
 }
 
 GLOBAL_HARD_BAD_TERMS = {
@@ -60,7 +60,6 @@ GLOBAL_HARD_BAD_TERMS = {
     "non funziona", "guasto", "ne fonctionne pas", "defekt", "funktioniert nicht",
     "missing",
     "replica", "copy", "imitacion", "imitación", "imitation", "fake",
-    "booklet", "manual", "instructions",
     "for parts", "parts only", "movement only", "only movement", "solo movimiento",
 }
 
@@ -79,6 +78,44 @@ LOW_QUALITY_TERMS = {
     "working ok",
 }
 
+PARTS_TERMS = {
+    "movement", "movimiento", "movimento", "uhrwerk", "werk",
+    "caliber", "calibre", "ebauche", "ébauche",
+    "dial", "esfera", "quadrante", "zifferblatt",
+    "case", "watch case", "caja", "cassa", "boitier", "boîtier", "gehäuse", "gehaeuse",
+    "hands", "manecillas", "zeiger", "lancette",
+    "crown", "corona", "stem", "tija", "winding stem",
+    "crystal", "glass", "plexi", "bezel", "insert",
+    "rotor", "balance", "mainplate", "bridge", "bridges", "wheel", "escape wheel",
+    "donor", "spare", "spares", "ricambi", "parts", "pieza", "piezas",
+}
+
+STRONG_WHOLE_WATCH_TERMS = {
+    "wristwatch", "reloj", "orologio", "montre", "uhr",
+    "full set", "new with box", "new with box and papers",
+    "nuevo con caja", "nuevo con caja y documentación",
+}
+
+PARTS_ONLY_PATTERNS = [
+    r"\bwatch case\b",
+    r"\bcase only\b",
+    r"\bdial only\b",
+    r"\bonly dial\b",
+    r"\bmovement only\b",
+    r"\bonly movement\b",
+    r"\bfor parts\b",
+    r"\bparts only\b",
+    r"\bsolo movimiento\b",
+    r"\bsolo calibre\b",
+    r"\bsolo calibro\b",
+    r"\bsolo caja\b",
+    r"\bcaja sola\b",
+    r"\bbo[iî]tier seul\b",
+    r"\bwithout movement\b",
+    r"\bsans mouvement\b",
+    r"\bohne uhrwerk\b",
+]
+
 
 def norm(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
@@ -90,6 +127,10 @@ def norm_tokens(items: list[str]) -> list[str]:
 
 def has_any(text: str, terms: set[str]) -> bool:
     return any(term in text for term in terms if term)
+
+
+def count_hits(text: str, terms: set[str]) -> int:
+    return sum(1 for term in terms if term and term in text)
 
 
 def is_eu_location(location_text: str) -> bool:
@@ -144,22 +185,39 @@ def looks_like_movement_or_parts(text: str) -> bool:
     if not t:
         return False
 
-    hard_terms = {
-        "for parts", "parts only", "movement only", "only movement",
-        "solo movimiento", "solo calibro", "solo calibre",
-        "movimento", "uhrwerk",
-    }
-    if any(term in t for term in hard_terms):
+    for pattern in PARTS_ONLY_PATTERNS:
+        if re.search(pattern, t):
+            return True
+
+    if has_any(t, {"movement only", "only movement", "for parts", "parts only"}):
         return True
 
-    movement_terms = {"movement", "movimiento", "uhrwerk", "werk", "caliber", "calibre", "movimento"}
-    if has_any(t, movement_terms):
-        full_watch_terms = {
-            "case", "caja", "boite", "boîtier", "dial", "esfera", "quadrante",
-            "hands", "manecillas", "bracelet", "strap", "correa"
+    parts_hits = count_hits(t, PARTS_TERMS)
+    whole_watch_hits = count_hits(t, STRONG_WHOLE_WATCH_TERMS)
+
+    # Caso claro: demasiadas señales de piezas y ninguna fuerte de reloj completo.
+    if parts_hits >= 2 and whole_watch_hits == 0:
+        return True
+
+    # Caso típico de calibre/movimiento suelto.
+    movement_core = {"movement", "movimiento", "movimento", "uhrwerk", "werk", "caliber", "calibre"}
+    if has_any(t, movement_core):
+        full_watch_context = {
+            "wristwatch", "reloj completo", "orologio completo", "montre complète", "watch complete",
+            "with bracelet", "with strap", "con correa", "con brazalete",
         }
-        if not has_any(t, full_watch_terms):
+        if not has_any(t, full_watch_context):
             return True
+
+    # Caja / esfera / agujas / corona sueltas
+    isolated_part_terms = {
+        "dial", "esfera", "quadrante", "zifferblatt",
+        "case", "watch case", "caja", "cassa", "boitier", "boîtier",
+        "hands", "manecillas", "crown", "corona", "stem", "tija",
+    }
+    if has_any(t, isolated_part_terms) and whole_watch_hits == 0:
+        # si además no aparece ningún indicador fuerte de reloj completo, fuera
+        return True
 
     return False
 
