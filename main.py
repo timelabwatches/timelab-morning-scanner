@@ -9,6 +9,7 @@ from clients.ebay_client import (
     search_listings,
 )
 from clients.telegram_client import send_crash_message, send_message
+from bridge.identity import IdentityEngine
 from pipeline.adapter_ebay import ebay_listing_to_candidate
 from pipeline.cooldown import (
     is_in_cooldown,
@@ -18,7 +19,6 @@ from pipeline.cooldown import (
     update_state,
 )
 from pipeline.engine import build_alert_payload, evaluate_candidate, passes_decision_gate
-from pipeline.knowledge_base import load_model_master
 from pipeline.comparables import load_comparables
 from pipeline.targets import load_target_bundle
 
@@ -102,7 +102,7 @@ def main() -> None:
     validate_settings(settings)
 
     targets, meta = load_target_bundle(settings.target_list_path)
-    models = load_model_master(settings.model_master_path)
+    identity_engine = IdentityEngine(settings.model_master_path)
     comparables = load_comparables(settings.comparables_path)
 
     token = get_oauth_token(settings)
@@ -163,7 +163,7 @@ def main() -> None:
         candidate = ebay_listing_to_candidate(listing)
         result = evaluate_candidate(
             candidate=candidate,
-            models=models,
+            identity_engine=identity_engine,
             comparables=comparables,
             settings=settings,
         )
