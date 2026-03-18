@@ -66,10 +66,24 @@ def _score_model(text: str, refs: list[str], model: dict) -> dict:
     keyword_score = 0
     matched_keywords = []
 
-    for token in [brand, family, model_name]:
-        if token and token in t:
-            keyword_score += 10
-            matched_keywords.append(token)
+    brand_hit = False
+    family_hit = False
+    model_hit = False
+
+    if brand and brand in t:
+        keyword_score += 14
+        matched_keywords.append(brand)
+        brand_hit = True
+
+    if family and family in t:
+        keyword_score += 10
+        matched_keywords.append(family)
+        family_hit = True
+
+    if model_name and model_name in t:
+        keyword_score += 10
+        matched_keywords.append(model_name)
+        model_hit = True
 
     for token in must_have:
         if token and token in t:
@@ -92,7 +106,19 @@ def _score_model(text: str, refs: list[str], model: dict) -> dict:
         if token and token in t:
             negative_penalty += 20
 
-    final_score = max(0, min(100, keyword_score + reference_score - negative_penalty))
+    # Regla crítica:
+    # si no hay ni marca ni referencia ni combinación suficiente de keywords,
+    # no debe existir match real.
+    has_real_signal = (
+        reference_score > 0
+        or brand_hit
+        or (family_hit and model_hit)
+    )
+
+    if not has_real_signal:
+        final_score = 0
+    else:
+        final_score = max(0, min(100, keyword_score + reference_score - negative_penalty))
 
     if final_score >= 75:
         band = "high"
@@ -104,7 +130,7 @@ def _score_model(text: str, refs: list[str], model: dict) -> dict:
         band = "very_low"
 
     return {
-        "target_id": target_id,
+        "target_id": target_id if final_score > 0 else None,
         "brand": model.get("brand", ""),
         "family": model.get("family", ""),
         "model": model.get("model", ""),
@@ -131,7 +157,7 @@ def resolve_listing_identity(text: str, models: list[dict]) -> dict:
         elif second is None or scored["match_score"] > second["match_score"]:
             second = scored
 
-    if best is None:
+    if best is None or int(best.get("match_score", 0) or 0) <= 0 or not best.get("target_id"):
         return {
             "target_id": None,
             "brand": "",
