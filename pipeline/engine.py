@@ -1,48 +1,19 @@
-from pipeline.comparables import get_target_stats
+# pipeline/engine.py
+
+from bridge.analyst_adapter import ebay_candidate_to_record
+from bridge.analyst_pipeline import analyze_record
 from pipeline.filters import reject_reason
-from pipeline.valuation import estimate_close_price, estimate_net_profit
-from bridge.identity import IdentityEngine
-
-
-def passes_identity_gate(identity: dict, min_match_score: int) -> bool:
-    score = int(identity.get("match_score", 0) or 0)
-    band = str(identity.get("match_confidence_band", "very_low"))
-    ambiguity = bool(identity.get("ambiguity", True))
-
-    if score < min_match_score:
-        return False
-
-    if band not in {"high", "medium"}:
-        return False
-
-    if ambiguity:
-        return False
-
-    return True
-
-
-def choose_close_estimate(listing_text: str, listing_price: float, stats: dict) -> float:
-    p50 = float(stats.get("p50", 0.0) or 0.0)
-    p75 = float(stats.get("p75", 0.0) or 0.0)
-    sample_size = int(stats.get("sample_size", 0) or 0)
-
-    if sample_size <= 0:
-        return round(max(listing_price * 1.30, listing_price + 70), 2)
-
-    return estimate_close_price(
-        price_eur=listing_price,
-        target_p50=p50,
-        target_p75=p75,
-        listing_text=listing_text,
-    )
 
 
 def evaluate_candidate(
     candidate: dict,
-    identity_engine: IdentityEngine,
     comparables: list[dict],
     settings,
 ) -> dict | None:
+    """
+    Evaluate one eBay candidate using the TIMELAB analyst pipeline.
+    """
+
     raw_text = candidate.get("raw_text", "")
     location = candidate.get("location", "")
 
@@ -54,64 +25,27 @@ def evaluate_candidate(
     if reason is not None:
         return None
 
-    identity = identity_engine.resolve(raw_text)
-    target_id = identity.get("target_id")
-    if not target_id:
-        return None
+    record = ebay_candidate_to_record(candidate)
+    analyzed = analyze_record(record)
 
-    stats = get_target_stats(target_id, comparables)
-
-    est_close = choose_close_estimate(
-        listing_text=raw_text,
-        listing_price=float(candidate.get("price", 0.0) or 0.0),
-        stats=stats,
-    )
-
-    net_profit, roi = estimate_net_profit(
-        buy_price=float(candidate.get("price", 0.0) or 0.0),
-        shipping_cost=float(candidate.get("shipping", 0.0) or 0.0),
-        estimated_close=est_close,
-        catwiki_commission=settings.catwiki_commission,
-        payment_processing=settings.payment_processing,
-        packaging_eur=settings.packaging_eur,
-        misc_eur=settings.misc_eur,
-        ship_arbitrage_eur=settings.ship_arbitrage_eur,
-        effective_tax_rate_on_profit=settings.effective_tax_rate_on_profit,
-    )
-
-    return {
-        "source": candidate.get("source", ""),
-        "listing_id": candidate.get("listing_id", ""),
-        "title": candidate.get("title", ""),
-        "description": candidate.get("description", ""),
-        "condition_text": candidate.get("condition_text", ""),
-        "price": float(candidate.get("price", 0.0) or 0.0),
-        "shipping": float(candidate.get("shipping", 0.0) or 0.0),
-        "location": candidate.get("location", ""),
-        "url": candidate.get("url", ""),
-        "category_id": candidate.get("category_id", ""),
-        "raw_text": raw_text,
-        "identity": identity,
-        "stats": stats,
-        "est_close": est_close,
-        "net_profit": net_profit,
-        "roi": roi,
-    }
+    return analyzed
 
 
 def passes_decision_gate(result: dict, settings) -> bool:
-    identity = result.get("identity", {})
-    stats = result.get("stats", {})
+    """
+    Decide whether an analyzed record should be sent to Telegram.
+    """
 
-    if not passes_identity_gate(identity, settings.min_match_score):
+    decision = result.get("decision")
+    expected_case = ((result.get("economics") or {}).get("expected_case") or {})
+    net_profit = expected_case.get("net_profit")
+    roi = expected_case.get("roi")
+
+    if decision not in {"strong_buy", "buy", "review"}:
         return False
 
-    sample_size = int(stats.get("sample_size", 0) or 0)
-    if sample_size < 2:
+    if net_profit is None or roi is None:
         return False
-
-    net_profit = float(result.get("net_profit", 0.0) or 0.0)
-    roi = float(result.get("roi", 0.0) or 0.0)
 
     if net_profit < settings.min_net_eur:
         return False
@@ -123,25 +57,38 @@ def passes_decision_gate(result: dict, settings) -> bool:
 
 
 def build_alert_payload(result: dict) -> dict:
-    identity = result.get("identity", {})
-    stats = result.get("stats", {})
+    """
+    Convert analyzed record into Telegram-friendly payload.
+    """
+
+    economics = result.get("economics") or {}
+    expected_case = economics.get("expected_case") or {}
+    auction_estimate = result.get("auction_estimate") or {}
 
     return {
         "title": result.get("title", ""),
         "price": float(result.get("price", 0.0) or 0.0),
         "shipping": float(result.get("shipping", 0.0) or 0.0),
-        "est_close": float(result.get("est_close", 0.0) or 0.0),
-        "net_profit": float(result.get("net_profit", 0.0) or 0.0),
-        "roi": float(result.get("roi", 0.0) or 0.0),
-        "target_id": identity.get("target_id", ""),
-        "match_score": int(identity.get("match_score", 0) or 0),
-        "match_band": identity.get("match_confidence_band", "very_low"),
-        "sample_size": int(stats.get("sample_size", 0) or 0),
-        "p50": float(stats.get("p50", 0.0) or 0.0),
-        "p75": float(stats.get("p75", 0.0) or 0.0),
-        "stats_confidence": int(stats.get("confidence_score", 0) or 0),
+        "est_close": float(auction_estimate.get("expected_hammer", 0.0) or 0.0),
+        "net_profit": float(expected_case.get("net_profit", 0.0) or 0.0),
+        "roi": float(expected_case.get("roi", 0.0) or 0.0),
+        "target_id": result.get("reference") or result.get("model") or result.get("brand") or "",
+        "match_score": int(result.get("score", 0) or 0),
+        "match_band": result.get("candidate_class", "weak"),
+        "sample_size": int((((result.get("reference_kb_data") or {}).get("price_stats") or {}).get("count", 0)) or 0),
+        "p50": float((((result.get("reference_kb_data") or {}).get("price_stats") or {}).get("p50", 0.0)) or 0.0),
+        "p75": float((((result.get("reference_kb_data") or {}).get("price_stats") or {}).get("p75", 0.0)) or 0.0),
+        "stats_confidence": auction_estimate.get("price_confidence", "low"),
         "location": result.get("location", ""),
-        "condition": result.get("condition_text", ""),
+        "condition": result.get("condition_text", "") or result.get("condition", ""),
         "category": result.get("category_id", ""),
         "url": result.get("url", ""),
+        "decision": result.get("decision", "pass"),
+        "decision_reason": result.get("decision_reason", ""),
+        "brand": result.get("brand", ""),
+        "model": result.get("model", ""),
+        "reference": result.get("reference", ""),
+        "watch_type": result.get("watch_type", ""),
+        "movement_hint": result.get("movement_hint", ""),
+        "reference_kb_hit": bool(result.get("reference_kb_hit")),
     }
