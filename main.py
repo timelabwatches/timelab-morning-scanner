@@ -1,3 +1,5 @@
+# main.py
+
 import time
 
 from config import load_settings, validate_settings
@@ -9,7 +11,6 @@ from clients.ebay_client import (
     search_listings,
 )
 from clients.telegram_client import send_crash_message, send_message
-from bridge.identity import IdentityEngine
 from pipeline.adapter_ebay import ebay_listing_to_candidate
 from pipeline.cooldown import (
     is_in_cooldown,
@@ -19,7 +20,6 @@ from pipeline.cooldown import (
     update_state,
 )
 from pipeline.engine import build_alert_payload, evaluate_candidate, passes_decision_gate
-from pipeline.comparables import load_comparables
 from pipeline.targets import load_target_bundle
 
 
@@ -65,11 +65,15 @@ def format_alerts(
             lines.extend(
                 [
                     f"{idx}) {alert['title']}",
+                    f"🏷️ Brand: {alert['brand'] or 'n/a'} | Model: {alert['model'] or 'n/a'} | Ref: {alert['reference'] or 'n/a'}",
+                    f"⌚ Type: {alert['watch_type'] or 'n/a'} | Movement: {alert['movement_hint'] or 'n/a'}",
                     f"💶 Buy: {alert['price']:.2f}€ | 🚚 Shipping: {alert['shipping']:.2f}€",
                     f"🎯 Est. close: {alert['est_close']:.2f}€",
                     f"✅ Net est.: {alert['net_profit']:.2f}€ | ROI: {int(alert['roi'] * 100)}%",
-                    f"🧩 Target: {alert['target_id']} | Match: {alert['match_score']} ({alert['match_band']})",
+                    f"🧠 Score: {alert['match_score']} | Class: {alert['match_band']}",
                     f"📊 sample={alert['sample_size']} | p50={alert['p50']:.2f}€ | p75={alert['p75']:.2f}€ | conf={alert['stats_confidence']}",
+                    f"📌 Decision: {alert['decision']} | Reason: {alert['decision_reason']}",
+                    f"🔎 KB hit: {'yes' if alert['reference_kb_hit'] else 'no'}",
                     f"📍 {alert['location'] or 'Unknown location'}",
                     f"🧾 Condition: {alert['condition'] or 'n/a'} | Category: {alert['category'] or 'n/a'}",
                     f"🔗 {alert['url']}",
@@ -85,10 +89,11 @@ def format_alerts(
             lines.extend(
                 [
                     f"{idx}) {item['title']}",
+                    f"🏷️ Brand: {item['brand'] or 'n/a'} | Model: {item['model'] or 'n/a'} | Ref: {item['reference'] or 'n/a'}",
                     f"💶 Buy: {item['price']:.2f}€ | 🎯 Est. close: {item['est_close']:.2f}€",
                     f"✅ Net est.: {item['net_profit']:.2f}€ | ROI: {int(item['roi'] * 100)}%",
-                    f"🧩 Target: {item['target_id']} | Match: {item['match_score']} ({item['match_band']})",
-                    f"📊 sample={item['sample_size']} | p50={item['p50']:.2f}€ | p75={item['p75']:.2f}€ | conf={item['stats_confidence']}",
+                    f"🧠 Score: {item['match_score']} | Class: {item['match_band']}",
+                    f"📌 Decision: {item['decision']} | Reason: {item['decision_reason']}",
                     f"🔗 {item['url']}",
                     "",
                 ]
@@ -102,8 +107,6 @@ def main() -> None:
     validate_settings(settings)
 
     targets, meta = load_target_bundle(settings.target_list_path)
-    identity_engine = IdentityEngine(settings.model_master_path)
-    comparables = load_comparables(settings.comparables_path)
 
     token = get_oauth_token(settings)
     state = load_state(settings.state_path)
@@ -163,8 +166,7 @@ def main() -> None:
         candidate = ebay_listing_to_candidate(listing)
         result = evaluate_candidate(
             candidate=candidate,
-            identity_engine=identity_engine,
-            comparables=comparables,
+            comparables=[],
             settings=settings,
         )
         if result is None:
