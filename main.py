@@ -18,6 +18,11 @@ from pipeline.cooldown import (
 )
 from pipeline.filters import reject_reason, title_passes_target_filters
 from pipeline.targets import TargetModel, load_target_bundle
+from pipeline.valuation import (
+    estimate_close_price,
+    estimate_net_profit,
+    passes_basic_profit_filters,
+)
 
 
 def dedupe_listings(listings: list[EbayListing]) -> list[EbayListing]:
@@ -44,7 +49,7 @@ def build_listing_text(listing: EbayListing) -> str:
     return " ".join(part.strip() for part in parts if part.strip()).strip()
 
 
-def find_best_target(listing_text: str, targets: list[TargetModel]) -> TargetModel | None:
+def find_best_target(listing_text: str, targets: list[TargetModel]) -> tuple[TargetModel | None, int]:
     text_lower = listing_text.lower()
 
     best_target = None
@@ -72,7 +77,7 @@ def find_best_target(listing_text: str, targets: list[TargetModel]) -> TargetMod
             best_score = score
             best_target = target
 
-    return best_target
+    return best_target, best_score
 
 
 def format_alerts(
@@ -97,15 +102,17 @@ def format_alerts(
     ]
 
     if not alerts:
-        lines.append("❌ No opportunities passed the basic filters.")
+        lines.append("❌ No opportunities passed the filters.")
         return "\n".join(lines)
 
     for idx, alert in enumerate(alerts, start=1):
         lines.extend(
             [
                 f"{idx}) {alert['title']}",
-                f"💶 Price: {alert['price']:.2f}€ | 🚚 Shipping: {alert['shipping']:.2f}€",
-                f"🧩 Target: {alert['target']}",
+                f"💶 Buy: {alert['price']:.2f}€ | 🚚 Shipping: {alert['shipping']:.2f}€",
+                f"🎯 Est. close: {alert['est_close']:.2f}€",
+                f"✅ Net est.: {alert['net_profit']:.2f}€ | ROI: {int(alert['roi'] * 100)}%",
+                f"🧩 Target: {alert['target']} | Match: {alert['match_score']}",
                 f"📍 {alert['location'] or 'Unknown location'}",
                 f"🧾 Condition: {alert['condition'] or 'n/a'} | Category: {alert['category'] or 'n/a'}",
                 f"🔗 {alert['url']}",
@@ -185,11 +192,41 @@ def main() -> None:
             if listing.category_id not in settings.ebay_allowed_category_ids:
                 continue
 
-        best_target = find_best_target(listing_text, targets)
+        best_target, match_score = find_best_target(listing_text, targets)
         if best_target is None:
             continue
 
+        if match_score < 2:
+            continue
+
         if best_target.buy_max > 0 and listing.price_eur > (best_target.buy_max * settings.buy_max_mult):
+            continue
+
+        est_close = estimate_close_price(
+            price_eur=listing.price_eur,
+            target_p50=best_target.catwiki_p50,
+            target_p75=best_target.catwiki_p75,
+            listing_text=listing_text,
+        )
+
+        net_profit, roi = estimate_net_profit(
+            buy_price=listing.price_eur,
+            shipping_cost=listing.shipping_eur,
+            estimated_close=est_close,
+            catwiki_commission=settings.catwiki_commission,
+            payment_processing=settings.payment_processing,
+            packaging_eur=settings.packaging_eur,
+            misc_eur=settings.misc_eur,
+            ship_arbitrage_eur=settings.ship_arbitrage_eur,
+            effective_tax_rate_on_profit=settings.effective_tax_rate_on_profit,
+        )
+
+        if not passes_basic_profit_filters(
+            net_profit=net_profit,
+            roi=roi,
+            min_net_eur=settings.min_net_eur,
+            min_net_roi=settings.min_net_roi,
+        ):
             continue
 
         if is_in_cooldown(
@@ -216,7 +253,11 @@ def main() -> None:
                 "title": listing.title,
                 "price": listing.price_eur,
                 "shipping": listing.shipping_eur,
+                "est_close": est_close,
+                "net_profit": net_profit,
+                "roi": roi,
                 "target": best_target.key,
+                "match_score": match_score,
                 "location": listing.location_text,
                 "condition": listing.condition,
                 "category": listing.category_id,
@@ -228,6 +269,8 @@ def main() -> None:
         sent_count += 1
 
     save_state(settings.state_path, state)
+
+    alerts.sort(key=lambda x: (x["net_profit"], x["roi"], x["match_score"]), reverse=True)
 
     message = format_alerts(
         target_version=meta.get("version", ""),
