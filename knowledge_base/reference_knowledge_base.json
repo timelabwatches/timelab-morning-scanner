@@ -1,1 +1,2400 @@
-.
+{
+  "t048417": {
+    "brand": "tissot",
+    "model_family": "t-race",
+    "movement_hint": "quartz",
+    "watch_type": "chronograph",
+    "is_chronograph": true,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot T-Race Chronograph T048417 Quartz"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 310.0,
+      "p50": 310.0,
+      "p75": 310.0,
+      "max": 310.0
+    }
+  },
+  "t115417": {
+    "brand": "tissot",
+    "model_family": "t-race",
+    "movement_hint": "quartz",
+    "watch_type": "chronograph",
+    "is_chronograph": true,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot T-Race Chronograph T115417 Quartz"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 325.0,
+      "p50": 325.0,
+      "p75": 325.0,
+      "max": 325.0
+    }
+  },
+  "t137410": {
+    "brand": "tissot",
+    "model_family": "prx",
+    "movement_hint": "quartz",
+    "watch_type": "sport",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot PRX Quartz T137410"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 340.0,
+      "p50": 340.0,
+      "p75": 340.0,
+      "max": 340.0
+    }
+  },
+  "t137407": {
+    "brand": "tissot",
+    "model_family": "prx",
+    "movement_hint": "automatic",
+    "watch_type": "sport",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot PRX Automatic Powermatic 80 T137407"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 510.0,
+      "p50": 510.0,
+      "p75": 510.0,
+      "max": 510.0
+    }
+  },
+  "t122410a": {
+    "brand": "tissot",
+    "model_family": "carson",
+    "movement_hint": "quartz",
+    "watch_type": "dress",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot Carson Quartz T122410A"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 255.0,
+      "p50": 255.0,
+      "p75": 255.0,
+      "max": 255.0
+    }
+  },
+  "t006407": {
+    "brand": "tissot",
+    "model_family": "le locle",
+    "movement_hint": "automatic",
+    "watch_type": "dress",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot Le Locle Automatic T006407"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 360.0,
+      "p50": 360.0,
+      "p75": 360.0,
+      "max": 360.0
+    }
+  },
+  "t120410": {
+    "brand": "tissot",
+    "model_family": "seastar",
+    "movement_hint": "quartz",
+    "watch_type": "diver",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot Seastar 1000 Quartz T120410"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 335.0,
+      "p50": 335.0,
+      "p75": 335.0,
+      "max": 335.0
+    }
+  },
+  "t120407": {
+    "brand": "tissot",
+    "model_family": "seastar",
+    "movement_hint": null,
+    "watch_type": "diver",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot Seastar 1000 Powermatic 80 T120407"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 510.0,
+      "p50": 510.0,
+      "p75": 510.0,
+      "max": 510.0
+    }
+  },
+  "t019430": {
+    "brand": "tissot",
+    "model_family": "visodate",
+    "movement_hint": "automatic",
+    "watch_type": "dress",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot Visodate Automatic T019430"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 395.0,
+      "p50": 395.0,
+      "p75": 395.0,
+      "max": 395.0
+    }
+  },
+  "t063610": {
+    "brand": "tissot",
+    "model_family": null,
+    "movement_hint": "quartz",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot Tradition Quartz T063610"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 190.0,
+      "p50": 190.0,
+      "p75": 190.0,
+      "max": 190.0
+    }
+  },
+  "srp777": {
+    "brand": "seiko",
+    "model_family": "prospex",
+    "movement_hint": "automatic",
+    "watch_type": "diver",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Seiko Prospex Turtle SRP777 Automatic"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 340.0,
+      "p50": 340.0,
+      "p75": 340.0,
+      "max": 340.0
+    }
+  },
+  "snl045": {
+    "brand": "seiko",
+    "model_family": "arctura",
+    "movement_hint": "kinetic",
+    "watch_type": "chronograph",
+    "is_chronograph": true,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Seiko Arctura Kinetic Chronograph SNL045"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 260.0,
+      "p50": 260.0,
+      "p75": 260.0,
+      "max": 260.0
+    }
+  },
+  "ska371": {
+    "brand": "seiko",
+    "model_family": null,
+    "movement_hint": "kinetic",
+    "watch_type": "diver",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Seiko Kinetic Diver SKA371"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 235.0,
+      "p50": 235.0,
+      "p75": 235.0,
+      "max": 235.0
+    }
+  },
+  "c032407": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": "automatic",
+    "watch_type": "diver",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Certina DS Action Diver C032407 Automatic"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 420.0,
+      "p50": 420.0,
+      "p75": 420.0,
+      "max": 420.0
+    }
+  },
+  "c001417": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": "quartz",
+    "watch_type": "chronograph",
+    "is_chronograph": true,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Certina DS Podium Chronograph C001417 Quartz"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 275.0,
+      "p50": 275.0,
+      "p75": 275.0,
+      "max": 275.0
+    }
+  },
+  "c006407": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": "automatic",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Certina DS-1 Automatic C006407"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 395.0,
+      "p50": 395.0,
+      "p75": 395.0,
+      "max": 395.0
+    }
+  },
+  "h684111": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": "quartz",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Hamilton Khaki Field Quartz H684111"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 300.0,
+      "p50": 300.0,
+      "p75": 300.0,
+      "max": 300.0
+    }
+  },
+  "h704555": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": "automatic",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Hamilton Khaki Field Automatic H704555"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 520.0,
+      "p50": 520.0,
+      "p75": 520.0,
+      "max": 520.0
+    }
+  },
+  "h823351": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": "automatic",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Hamilton Khaki Navy Scuba Automatic H823351"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 520.0,
+      "p50": 520.0,
+      "p75": 520.0,
+      "max": 520.0
+    }
+  },
+  "h325651": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": "automatic",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Hamilton Jazzmaster Automatic H325651"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 580.0,
+      "p50": 580.0,
+      "p75": 580.0,
+      "max": 580.0
+    }
+  },
+  "h244112": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": "quartz",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Hamilton Ventura Quartz H244112"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 430.0,
+      "p50": 430.0,
+      "p75": 430.0,
+      "max": 430.0
+    }
+  },
+  "wah1110": {
+    "brand": "tagheuer",
+    "model_family": "formula 1",
+    "movement_hint": "quartz",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tag Heuer Formula 1 Quartz WAH1110"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 520.0,
+      "p50": 520.0,
+      "p75": 520.0,
+      "max": 520.0
+    }
+  },
+  "caz1010": {
+    "brand": "tagheuer",
+    "model_family": "formula 1",
+    "movement_hint": "quartz",
+    "watch_type": "chronograph",
+    "is_chronograph": true,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tag Heuer Formula 1 Chronograph CAZ1010 Quartz"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 640.0,
+      "p50": 640.0,
+      "p75": 640.0,
+      "max": 640.0
+    }
+  },
+  "waf1110": {
+    "brand": "tagheuer",
+    "model_family": "aquaracer",
+    "movement_hint": "quartz",
+    "watch_type": "sport",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tag Heuer Aquaracer Quartz WAF1110"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 720.0,
+      "p50": 720.0,
+      "p75": 720.0,
+      "max": 720.0
+    }
+  },
+  "way211a": {
+    "brand": "tagheuer",
+    "model_family": "aquaracer",
+    "movement_hint": "automatic",
+    "watch_type": "sport",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tag Heuer Aquaracer Automatic WAY211A"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 1250.0,
+      "p50": 1250.0,
+      "p75": 1250.0,
+      "max": 1250.0
+    }
+  },
+  "65494": {
+    "brand": "baume",
+    "model_family": null,
+    "movement_hint": "quartz",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Baume & Mercier Classima Quartz 65494"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 360.0,
+      "p50": 360.0,
+      "p75": 360.0,
+      "max": 360.0
+    }
+  },
+  "prs200": {
+    "brand": "tissot",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot PRS200"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 180.0,
+      "p50": 180.0,
+      "p75": 180.0,
+      "max": 180.0
+    }
+  },
+  "t870": {
+    "brand": "tissot",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot T870/970"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 142.0,
+      "p50": 142.0,
+      "p75": 142.0,
+      "max": 142.0
+    }
+  },
+  "pr100": {
+    "brand": "tissot",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "Tissot PR100"
+    ],
+    "source_quality": "real_closed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 1,
+      "seed_count": 0,
+      "min": 90.0,
+      "p50": 90.0,
+      "p75": 90.0,
+      "max": 90.0
+    }
+  },
+  "10059": {
+    "brand": "baume",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "baume clifton 10059"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 2100.0,
+      "p50": 2100.0,
+      "p75": 2100.0,
+      "max": 2100.0
+    }
+  },
+  "10123": {
+    "brand": "baume",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "baume clifton 10123"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 2200.0,
+      "p50": 2200.0,
+      "p75": 2200.0,
+      "max": 2200.0
+    }
+  },
+  "10214": {
+    "brand": "baume",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "baume classima 10214"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 1050.0,
+      "p50": 1050.0,
+      "p75": 1050.0,
+      "max": 1050.0
+    }
+  },
+  "10324": {
+    "brand": "baume",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "baume classima 10324"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 1100.0,
+      "p50": 1100.0,
+      "p75": 1100.0,
+      "max": 1100.0
+    }
+  },
+  "10468": {
+    "brand": "baume",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "baume riviera 10468"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 1700.0,
+      "p50": 1700.0,
+      "p75": 1700.0,
+      "max": 1700.0
+    }
+  },
+  "10660": {
+    "brand": "baume",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "baume riviera 10660"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 1800.0,
+      "p50": 1800.0,
+      "p75": 1800.0,
+      "max": 1800.0
+    }
+  },
+  "96b104": {
+    "brand": "bulova",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": "dress",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "bulova classic 96b104"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 210.0,
+      "p50": 210.0,
+      "p75": 210.0,
+      "max": 210.0
+    }
+  },
+  "96b251": {
+    "brand": "bulova",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "bulova lunar pilot 96b251"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 420.0,
+      "p50": 420.0,
+      "p75": 420.0,
+      "max": 420.0
+    }
+  },
+  "96b258": {
+    "brand": "bulova",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "bulova lunar pilot 96b258"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 440.0,
+      "p50": 440.0,
+      "p75": 440.0,
+      "max": 440.0
+    }
+  },
+  "96b272": {
+    "brand": "bulova",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "bulova marine star 96b272"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 240.0,
+      "p50": 240.0,
+      "p75": 240.0,
+      "max": 240.0
+    }
+  },
+  "98b152": {
+    "brand": "bulova",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "bulova precisionist 98b152"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 350.0,
+      "p50": 350.0,
+      "p75": 350.0,
+      "max": 350.0
+    }
+  },
+  "98b203": {
+    "brand": "bulova",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "bulova marine star 98b203"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 250.0,
+      "p50": 250.0,
+      "p75": 250.0,
+      "max": 250.0
+    }
+  },
+  "98b229": {
+    "brand": "bulova",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "bulova precisionist 98b229"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 380.0,
+      "p50": 380.0,
+      "p75": 380.0,
+      "max": 380.0
+    }
+  },
+  "98b301": {
+    "brand": "bulova",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "bulova marine star 98b301"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 260.0,
+      "p50": 260.0,
+      "p75": 260.0,
+      "max": 260.0
+    }
+  },
+  "dw5600": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio g-shock dw5600"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 80.0,
+      "p50": 80.0,
+      "p75": 80.0,
+      "max": 80.0
+    }
+  },
+  "dw6900": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio g-shock dw6900"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 85.0,
+      "p50": 85.0,
+      "p75": 85.0,
+      "max": 85.0
+    }
+  },
+  "ef527": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio edifice ef527"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 170.0,
+      "p50": 170.0,
+      "p75": 170.0,
+      "max": 170.0
+    }
+  },
+  "ef539": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio edifice ef539"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 150.0,
+      "p50": 150.0,
+      "p75": 150.0,
+      "max": 150.0
+    }
+  },
+  "ef550": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio edifice ef550"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 180.0,
+      "p50": 180.0,
+      "p75": 180.0,
+      "max": 180.0
+    }
+  },
+  "eqb1000": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio edifice eqb1000"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 260.0,
+      "p50": 260.0,
+      "p75": 260.0,
+      "max": 260.0
+    }
+  },
+  "ga100": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio g-shock ga100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 90.0,
+      "p50": 90.0,
+      "p75": 90.0,
+      "max": 90.0
+    }
+  },
+  "ga110": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio g-shock ga110"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 100.0,
+      "p50": 100.0,
+      "p75": 100.0,
+      "max": 100.0
+    }
+  },
+  "ga2100": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio g-shock ga2100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 120.0,
+      "p50": 120.0,
+      "p75": 120.0,
+      "max": 120.0
+    }
+  },
+  "gm2100": {
+    "brand": "casio",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "casio g-shock gm2100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 180.0,
+      "p50": 180.0,
+      "p75": 180.0,
+      "max": 180.0
+    }
+  },
+  "c0014171105700": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds podium c0014171105700"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 320.0,
+      "p50": 320.0,
+      "p75": 320.0,
+      "max": 320.0
+    }
+  },
+  "c0064071105100": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds-1 c0064071105100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 380.0,
+      "p50": 380.0,
+      "p75": 380.0,
+      "max": 380.0
+    }
+  },
+  "c0064281603100": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds-1 c0064281603100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 400.0,
+      "p50": 400.0,
+      "p75": 400.0,
+      "max": 400.0
+    }
+  },
+  "c0244071605100": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds-2 c0244071605100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 330.0,
+      "p50": 330.0,
+      "p75": 330.0,
+      "max": 330.0
+    }
+  },
+  "c0244101605100": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds-2 c0244101605100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 310.0,
+      "p50": 310.0,
+      "p75": 310.0,
+      "max": 310.0
+    }
+  },
+  "c0324071104100": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds action c0324071104100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 630.0,
+      "p50": 630.0,
+      "p75": 630.0,
+      "max": 630.0
+    }
+  },
+  "c0328071104100": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds action c0328071104100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 600.0,
+      "p50": 600.0,
+      "p75": 600.0,
+      "max": 600.0
+    }
+  },
+  "c0344171605700": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds podium c0344171605700"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 350.0,
+      "p50": 350.0,
+      "p75": 350.0,
+      "max": 350.0
+    }
+  },
+  "ds1": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds ds1"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 300.0,
+      "p50": 300.0,
+      "p75": 300.0,
+      "max": 300.0
+    }
+  },
+  "ds2": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds ds2"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 320.0,
+      "p50": 320.0,
+      "p75": 320.0,
+      "max": 320.0
+    }
+  },
+  "ds3": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds ds3"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 340.0,
+      "p50": 340.0,
+      "p75": 340.0,
+      "max": 340.0
+    }
+  },
+  "dsfirst": {
+    "brand": "certina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "certina ds dsfirst"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 260.0,
+      "p50": 260.0,
+      "p75": 260.0,
+      "max": 260.0
+    }
+  },
+  "bm8180": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen eco-drive bm8180"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 210.0,
+      "p50": 210.0,
+      "p75": 210.0,
+      "max": 210.0
+    }
+  },
+  "bm8475": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen eco-drive bm8475"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 200.0,
+      "p50": 200.0,
+      "p75": 200.0,
+      "max": 200.0
+    }
+  },
+  "bn0150": {
+    "brand": "citizen",
+    "model_family": "promaster",
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen promaster bn0150"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 320.0,
+      "p50": 320.0,
+      "p75": 320.0,
+      "max": 320.0
+    }
+  },
+  "bn0190": {
+    "brand": "citizen",
+    "model_family": "promaster",
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen promaster bn0190"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 340.0,
+      "p50": 340.0,
+      "p75": 340.0,
+      "max": 340.0
+    }
+  },
+  "bn0200": {
+    "brand": "citizen",
+    "model_family": "promaster",
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen promaster bn0200"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 330.0,
+      "p50": 330.0,
+      "p75": 330.0,
+      "max": 330.0
+    }
+  },
+  "bn0220": {
+    "brand": "citizen",
+    "model_family": "promaster",
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen promaster bn0220"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 340.0,
+      "p50": 340.0,
+      "p75": 340.0,
+      "max": 340.0
+    }
+  },
+  "ca0641": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen eco-drive ca0641"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 230.0,
+      "p50": 230.0,
+      "p75": 230.0,
+      "max": 230.0
+    }
+  },
+  "ca0649": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen eco-drive ca0649"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 250.0,
+      "p50": 250.0,
+      "p75": 250.0,
+      "max": 250.0
+    }
+  },
+  "ca0690": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen eco-drive ca0690"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 240.0,
+      "p50": 240.0,
+      "p75": 240.0,
+      "max": 240.0
+    }
+  },
+  "ca4210": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen eco-drive ca4210"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 230.0,
+      "p50": 230.0,
+      "p75": 230.0,
+      "max": 230.0
+    }
+  },
+  "ca4420": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen eco-drive ca4420"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 250.0,
+      "p50": 250.0,
+      "p75": 250.0,
+      "max": 250.0
+    }
+  },
+  "nj0150": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen tsuyosa nj0150"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 360.0,
+      "p50": 360.0,
+      "p75": 360.0,
+      "max": 360.0
+    }
+  },
+  "nj0151": {
+    "brand": "citizen",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen tsuyosa nj0151"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 370.0,
+      "p50": 370.0,
+      "p75": 370.0,
+      "max": 370.0
+    }
+  },
+  "ny0040": {
+    "brand": "citizen",
+    "model_family": "promaster",
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen promaster ny0040"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 290.0,
+      "p50": 290.0,
+      "p75": 290.0,
+      "max": 290.0
+    }
+  },
+  "ny0075": {
+    "brand": "citizen",
+    "model_family": "promaster",
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen promaster ny0075"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 300.0,
+      "p50": 300.0,
+      "p75": 300.0,
+      "max": 300.0
+    }
+  },
+  "ny0085": {
+    "brand": "citizen",
+    "model_family": "promaster",
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen promaster ny0085"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 320.0,
+      "p50": 320.0,
+      "p75": 320.0,
+      "max": 320.0
+    }
+  },
+  "ny0100": {
+    "brand": "citizen",
+    "model_family": "promaster",
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "citizen promaster ny0100"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 310.0,
+      "p50": 310.0,
+      "p75": 310.0,
+      "max": 310.0
+    }
+  },
+  "f20330": {
+    "brand": "festina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": "chronograph",
+    "is_chronograph": true,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "festina chronograph f20330"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 120.0,
+      "p50": 120.0,
+      "p75": 120.0,
+      "max": 120.0
+    }
+  },
+  "f20339": {
+    "brand": "festina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": "chronograph",
+    "is_chronograph": true,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "festina chronograph f20339"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 115.0,
+      "p50": 115.0,
+      "p75": 115.0,
+      "max": 115.0
+    }
+  },
+  "f20363": {
+    "brand": "festina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": "chronograph",
+    "is_chronograph": true,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "festina chronograph f20363"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 130.0,
+      "p50": 130.0,
+      "p75": 130.0,
+      "max": 130.0
+    }
+  },
+  "f20445": {
+    "brand": "festina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": "sport",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "festina sport f20445"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 100.0,
+      "p50": 100.0,
+      "p75": 100.0,
+      "max": 100.0
+    }
+  },
+  "f20463": {
+    "brand": "festina",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": "sport",
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "festina sport f20463"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 105.0,
+      "p50": 105.0,
+      "p75": 105.0,
+      "max": 105.0
+    }
+  },
+  "f20531": {
+    "brand": "festina",
+    "model_family": null,
+    "movement_hint": "automatic",
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "festina automatic f20531"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 170.0,
+      "p50": 170.0,
+      "p75": 170.0,
+      "max": 170.0
+    }
+  },
+  "h24411732": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton ventura h24411732"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 780.0,
+      "p50": 780.0,
+      "p75": 780.0,
+      "max": 780.0
+    }
+  },
+  "h244121": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton ventura h244121"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 850.0,
+      "p50": 850.0,
+      "p75": 850.0,
+      "max": 850.0
+    }
+  },
+  "h32505141": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton jazzmaster h32505141"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 650.0,
+      "p50": 650.0,
+      "p75": 650.0,
+      "max": 650.0
+    }
+  },
+  "h32515555": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton jazzmaster h32515555"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 750.0,
+      "p50": 750.0,
+      "p75": 750.0,
+      "max": 750.0
+    }
+  },
+  "h32616133": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton jazzmaster h32616133"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 850.0,
+      "p50": 850.0,
+      "p75": 850.0,
+      "max": 850.0
+    }
+  },
+  "h32645555": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton jazzmaster h32645555"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 800.0,
+      "p50": 800.0,
+      "p75": 800.0,
+      "max": 800.0
+    }
+  },
+  "h68401735": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki field h68401735"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 390.0,
+      "p50": 390.0,
+      "p75": 390.0,
+      "max": 390.0
+    }
+  },
+  "h68411533": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki field h68411533"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 420.0,
+      "p50": 420.0,
+      "p75": 420.0,
+      "max": 420.0
+    }
+  },
+  "h70455533": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki field h70455533"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 550.0,
+      "p50": 550.0,
+      "p75": 550.0,
+      "max": 550.0
+    }
+  },
+  "h70555533": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki field h70555533"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 600.0,
+      "p50": 600.0,
+      "p75": 600.0,
+      "max": 600.0
+    }
+  },
+  "h70605731": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki field h70605731"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 780.0,
+      "p50": 780.0,
+      "p75": 780.0,
+      "max": 780.0
+    }
+  },
+  "h70605943": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki field h70605943"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 780.0,
+      "p50": 780.0,
+      "p75": 780.0,
+      "max": 780.0
+    }
+  },
+  "h82305931": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki navy h82305931"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 720.0,
+      "p50": 720.0,
+      "p75": 720.0,
+      "max": 720.0
+    }
+  },
+  "h82335131": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki navy h82335131"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 640.0,
+      "p50": 640.0,
+      "p75": 640.0,
+      "max": 640.0
+    }
+  },
+  "h82505140": {
+    "brand": "hamilton",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "hamilton khaki navy h82505140"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 680.0,
+      "p50": 680.0,
+      "p75": 680.0,
+      "max": 680.0
+    }
+  },
+  "0273400": {
+    "brand": "junghans",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "junghans max bill 0273400"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 760.0,
+      "p50": 760.0,
+      "p75": 760.0,
+      "max": 760.0
+    }
+  },
+  "0273500": {
+    "brand": "junghans",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "junghans max bill 0273500"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 800.0,
+      "p50": 800.0,
+      "p75": 800.0,
+      "max": 800.0
+    }
+  },
+  "0274121": {
+    "brand": "junghans",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "junghans meister 0274121"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 1050.0,
+      "p50": 1050.0,
+      "p75": 1050.0,
+      "max": 1050.0
+    }
+  },
+  "0274526": {
+    "brand": "junghans",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "junghans meister 0274526"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 1150.0,
+      "p50": 1150.0,
+      "p75": 1150.0,
+      "max": 1150.0
+    }
+  },
+  "0277200": {
+    "brand": "junghans",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "junghans meister 0277200"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 1100.0,
+      "p50": 1100.0,
+      "p75": 1100.0,
+      "max": 1100.0
+    }
+  },
+  "0414463": {
+    "brand": "junghans",
+    "model_family": null,
+    "movement_hint": null,
+    "watch_type": null,
+    "is_chronograph": false,
+    "is_ladies": false,
+    "observed_titles": 1,
+    "sample_titles": [
+      "junghans max bill 0414463"
+    ],
+    "source_quality": "seed_only",
+    "price_stats": {
+      "count": 1,
+      "real_closed_count": 0,
+      "seed_count": 1,
+      "min": 900.0,
+      "p50": 900.0,
+      "p75": 900.0,
+      "max": 900.0
+    }
+  }
+}
