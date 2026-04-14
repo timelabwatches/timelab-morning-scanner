@@ -155,6 +155,13 @@ CC_STRICT_KEYWORDS = env_int("CC_STRICT_KEYWORDS", 1) == 1
 CC_DISCOVERY_MODE = env_int("CC_DISCOVERY_MODE", 1) == 1
 CC_VISION_HINTS_PATH = env_str("CC_VISION_HINTS_PATH", "vision_annotations.json")
 
+# ── VISION VIA CLAUDE API ────────────────────────────────────────────────────
+ANTHROPIC_API_KEY   = env_str("ANTHROPIC_API_KEY", "")
+CC_VISION_ENABLED   = env_int("CC_VISION_ENABLED", 1) == 1 and bool(ANTHROPIC_API_KEY)
+CC_VISION_MODEL     = env_str("CC_VISION_MODEL", "claude-sonnet-4-20250514")
+CC_VISION_TIMEOUT   = env_int("CC_VISION_TIMEOUT", 30)
+CC_VISION_MAX_CALLS = env_int("CC_VISION_MAX_CALLS", 50)  # safety cap per run
+
 
 @dataclass
 class Listing:
@@ -165,6 +172,166 @@ class Listing:
     cond: str
     availability: str
     price_confidence: int = 0
+    description: str = ""   # full page text — used for movement/ref detection
+    image_url: str = ""     # main product image URL for vision analysis
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VISION ANALYSIS via Claude API
+# Called only on shortlisted candidates (~40 per run). Cost: ~€0.003/listing.
+# Returns structured dict or None on failure.
+# ─────────────────────────────────────────────────────────────────────────────
+import base64 as _b64
+import urllib.request as _urlreq
+
+_VISION_PROMPT = """You are a professional watch authenticator and identifier.
+Analyze this watch listing image and return ONLY valid JSON with these exact keys:
+{
+  "brand": "brand name or null",
+  "model": "model name or null",
+  "reference": "reference number or null",
+  "movement": "automatic" | "manual" | "quartz" | "kinetic" | "solar" | "unknown",
+  "case_size_mm": number or null,
+  "condition": "mint" | "excellent" | "good" | "fair" | "poor" | "unknown",
+  "confidence": 0-100,
+  "notes": "any important details in one sentence"
+}
+Return ONLY the JSON object, no other text."""
+
+_vision_call_count = 0
+
+def analyze_listing_image(image_url: str, listing_title: str) -> Optional[Dict[str, Any]]:
+    """Call Claude vision API to identify the watch in a CC listing image."""
+    global _vision_call_count
+    if not CC_VISION_ENABLED or not image_url:
+        return None
+    if _vision_call_count >= CC_VISION_MAX_CALLS:
+        return None
+    try:
+        # Download image
+        req = _urlreq.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+        with _urlreq.urlopen(req, timeout=10) as resp:
+            img_bytes = resp.read()
+        if len(img_bytes) < 1000:  # skip tiny/broken images
+            return None
+        # Detect media type
+        media_type = "image/jpeg"
+        if image_url.lower().endswith(".png"):  media_type = "image/png"
+        elif image_url.lower().endswith(".webp"): media_type = "image/webp"
+        img_b64 = _b64.b64encode(img_bytes).decode()
+
+        # Call Claude API
+        import json as _json
+        import urllib.request as _ur
+        payload = {
+            "model": CC_VISION_MODEL,
+            "max_tokens": 300,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": img_b64
+                    }},
+                    {"type": "text", "text": f"Listing title: {listing_title}\n\n{_VISION_PROMPT}"}
+                ]
+            }]
+        }
+        api_req = _ur.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=_json.dumps(payload).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+            },
+            method="POST"
+        )
+        with _ur.urlopen(api_req, timeout=CC_VISION_TIMEOUT) as resp:
+            result = _json.loads(resp.read())
+
+        _vision_call_count += 1
+        raw = result.get("content", [{}])[0].get("text", "").strip()
+        # Strip any accidental markdown fences
+        raw = raw.strip("` \n").removeprefix("json").strip()
+        vision_data = _json.loads(raw)
+        vision_data["_raw_used"] = True
+        return vision_data
+
+    except Exception as e:
+        return {"error": str(e)[:80], "_raw_used": False}
+
+
+def apply_vision_to_match(listing, target, match, hits, targets):
+    """
+    Use vision output to:
+    1. Reject automatic targets when watch is quartz/solar/kinetic
+    2. Find a better target if vision identifies a specific model
+    3. Adjust match confidence based on vision identification
+    Returns (target, match, hits, vision_data)
+    """
+    if not CC_VISION_ENABLED or not listing.image_url:
+        return target, match, hits, None
+
+    vision = analyze_listing_image(listing.image_url, listing.title)
+    if not vision or "error" in vision:
+        return target, match, hits, vision
+
+    movement = (vision.get("movement") or "unknown").lower()
+    v_brand   = (vision.get("brand") or "").lower().strip()
+    v_model   = (vision.get("model") or "").lower().strip()
+    v_ref     = (vision.get("reference") or "").lower().strip()
+    v_conf    = int(vision.get("confidence") or 0)
+
+    # ── Rule 1: Quartz/kinetic/solar → reject automatic-only targets ──────────
+    MECHANICAL = {"automatic", "manual"}
+    ELECTRONIC  = {"quartz", "kinetic", "solar"}
+    target_notes  = (target.get("catawiki_estimate") or {}).get("notes", "").lower()
+    target_family = (target.get("family") or "").lower()
+    target_id_low = str(target.get("id","")).lower()
+    # Check if target is for a mechanical watch using multiple signals
+    AUTO_SIGNALS = ["automatic","auto","automático","powermatic","movement auto",
+                    "calibre auto","mechanical","self-winding","manufacture"]
+    is_auto_target = (
+        any(w in target_family for w in AUTO_SIGNALS) or
+        any(w in target_id_low  for w in ["_auto","powermatic","mechanical"]) or
+        any(w in target_notes   for w in AUTO_SIGNALS)
+    )
+
+    if movement in ELECTRONIC and is_auto_target and v_conf >= 60:
+        # Try to find a generic/quartz target instead
+        quartz_fallback = next(
+            (t for t in targets
+             if t.get("brand","").lower() == v_brand
+             and str(t.get("id","")).endswith("_GENERIC")),
+            None
+        )
+        if quartz_fallback:
+            target = quartz_fallback
+            match  = max(40, match - 20)
+            hits   = 0
+        else:
+            # No good fallback — downgrade match confidence significantly
+            match = max(20, match - 30)
+
+    # ── Rule 2: Vision identifies specific model → try to find better target ──
+    elif v_conf >= 75 and v_model:
+        search_text = f"{v_brand} {v_model} {v_ref}".strip()
+        better_target, better_match, better_hits = best_target(search_text, targets)
+        if better_target and better_target.get("id") != target.get("id") and better_match > match:
+            target = better_target
+            match  = better_match
+            hits   = better_hits
+
+    # ── Rule 3: Vision brand ≠ listing brand → flag as mismatch ──────────────
+    elif v_conf >= 80 and v_brand and target:
+        t_brand = canon(target.get("brand",""))
+        if v_brand and t_brand and v_brand not in t_brand and t_brand not in v_brand:
+            match = max(10, match - 40)  # heavy penalty for brand mismatch
+
+    return target, match, hits, vision
+
+
 
 
 # -----------------------------
@@ -602,6 +769,44 @@ def parse_detail_page(html: str, url: str) -> Listing:
         availability.append("tienda")
     availability_str = "desconocido" if not availability else " + ".join(availability)
 
+    # Extract description text (first 800 chars of product description block)
+    description = ""
+    for sel in ["div.product-description", "div.description", "p.description",
+                "div[class*='detail']", "div[class*='product']"]:
+        el = soup.select_one(sel)
+        if el:
+            description = canon(el.get_text(" ", strip=True))[:800]
+            break
+    if not description:
+        # Fallback: use text_all but strip nav/footer noise (first 600 chars after title)
+        try:
+            idx = text_all.find(canon(title[:20]))
+            if idx >= 0:
+                description = text_all[idx:idx+600]
+        except Exception:
+            pass
+
+    # Extract main product image URL
+    image_url = ""
+    for sel in ["img.product-image", "img[class*='product']", "img[class*='detail']",
+                "div.product-images img", "figure img", "img[class*='main']"]:
+        img = soup.select_one(sel)
+        if img and img.get("src","").startswith("http"):
+            image_url = img["src"]
+            break
+    if not image_url:
+        # Try og:image meta tag
+        og = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name":"og:image"})
+        if og and og.get("content","").startswith("http"):
+            image_url = og["content"]
+    if not image_url:
+        # Last resort: first large-ish img with https
+        for img in soup.find_all("img", src=True):
+            src = img.get("src","")
+            if src.startswith("https") and any(ext in src.lower() for ext in [".jpg",".jpeg",".webp",".png"]):
+                image_url = src
+                break
+
     return Listing(
         title=title,
         price_eur=float(price),
@@ -610,6 +815,8 @@ def parse_detail_page(html: str, url: str) -> Listing:
         cond=canon(cond),
         availability=availability_str,
         price_confidence=price_confidence,
+        description=description,
+        image_url=image_url,
     )
 
 
@@ -644,9 +851,12 @@ def load_targets(path: str) -> List[Dict[str, Any]]:
 
 
 def extract_brand(title: str) -> Optional[str]:
+    import re as _re
     t = canon(title)
     for b in sorted(REPUTABLE_BRANDS, key=lambda x: -len(x)):
-        if canon(b) in t:
+        cb = canon(b)
+        # Word-boundary check: prevents "oris" matching inside "motorista", etc.
+        if _re.search(r'(?<![a-z])' + _re.escape(cb) + r'(?![a-z])', t):
             if b in ("tag", "heuer"):
                 return "tag heuer"
             if b == "baume" or "baume" in b:
@@ -732,12 +942,112 @@ def target_requires_chrono_evidence(target: Dict[str, Any]) -> bool:
         "TISSOT_VTG_CHRONOGRAPH_GENERIC",
     }
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEVEL 1: Movement + detail detection from page description text
+# No API calls — purely regex/keyword scan of the scraped HTML text.
+# ─────────────────────────────────────────────────────────────────────────────
+def detect_movement_from_text(title: str, description: str) -> str:
+    """
+    Returns: 'automatic' | 'manual' | 'quartz' | 'solar' | 'kinetic' | 'unknown'
+    Uses page description text first, falls back to title keywords.
+    """
+    text = canon(title + " " + description)
+
+    # Quartz/electronic signals — check first (most common false positive source)
+    if any(w in text for w in [
+        "cuarzo", "quartz", "quarzo", "battery", "bateria", "batería",
+        "solar", "kinetic", "eco-drive", "eco drive", "light powered",
+        "radio controlled", "radio-controlled", "atomic",
+    ]):
+        if "solar" in text: return "solar"
+        if "kinetic" in text: return "kinetic"
+        return "quartz"
+
+    # Manual wind
+    if any(w in text for w in [
+        "cuerda manual", "manual wind", "hand wind", "carga manual",
+        "remontage manuel", "carica manuale",
+    ]):
+        return "manual"
+
+    # Automatic signals
+    if any(w in text for w in [
+        "automático", "automatico", "automatic", "automat",
+        "self-winding", "self winding", "rotor", "powermatic",
+        "calibre automático", "movimiento automático",
+        "eta 28", "eta 25", "valjoux", "miyota", "nh35", "nh36",
+        "7s26", "7s36", "4r35", "4r36", "6r15",
+    ]):
+        return "automatic"
+
+    return "unknown"
+
+
+def detect_extras_from_text(description: str) -> Dict[str, bool]:
+    """Detect box/papers/service from description text (more reliable than title)."""
+    t = canon(description)
+    return {
+        "has_box":     any(w in t for w in ["caja original","caja","estuche","box","boîte","scatola"]),
+        "has_papers":  any(w in t for w in ["papeles","papers","garantia","garantía","warranty","documentos","certificado"]),
+        "has_service": any(w in t for w in ["revisado","serviced","revision","revisión","overhaul","repasado"]),
+        "is_nos":      any(w in t for w in ["sin usar","nuevo","nos","new old stock","nunca usado"]),
+        "is_full_set": any(w in t for w in ["full set","set completo","completo con","caja y papeles"]),
+    }
+
+
+AUTO_TARGET_SIGNALS = [
+    "automatic","auto","automático","powermatic","mechanical","self-winding",
+    "calibre auto","movement auto",
+]
+
+def target_requires_mechanical(target: Dict[str, Any]) -> bool:
+    """Returns True if this target is specifically for automatic/manual watches."""
+    family  = (target.get("family") or "").lower()
+    tid     = str(target.get("id","")).lower()
+    notes   = (target.get("catawiki_estimate") or {}).get("notes","").lower()
+    return any(
+        w in family or w in tid or w in notes
+        for w in AUTO_TARGET_SIGNALS
+    )
+
+
+def apply_description_filter(listing, target, match, hits, targets):
+    """
+    Level 1: use page description text to:
+    1. Detect movement type
+    2. Reject quartz watches matched to automatic targets
+    3. Find a more appropriate target if needed
+    Returns: (target, match, hits, movement_type)
+    """
+    movement = detect_movement_from_text(listing.title, listing.description)
+
+    if movement in ("quartz", "solar", "kinetic") and target_requires_mechanical(target):
+        # Try to find a generic target for this brand instead
+        brand_lower = (target.get("brand") or "").lower()
+        generic = next(
+            (t for t in targets
+             if t.get("brand","").lower() == brand_lower
+             and str(t.get("id","")).upper().endswith("_GENERIC")),
+            None
+        )
+        if generic:
+            return generic, max(35, match - 15), 0, movement
+        else:
+            # No generic target → heavy match penalty, will likely not pass threshold
+            return target, max(10, match - 35), hits, movement
+
+    return target, match, hits, movement
+
+
+
 def compute_match_score(title: str, target: Dict[str, Any]) -> int:
     t = canon(title)
     score = 0
 
+    import re as _re2
     brand = canon(target.get("brand", ""))
-    if brand and brand in t:
+    if brand and _re2.search(r'(?<![a-z])' + _re2.escape(brand) + r'(?![a-z])', t):
         score += 35
 
     must_in = [canon(x) for x in (target.get("must_include") or []) if isinstance(x, str)]
@@ -782,11 +1092,9 @@ def best_target(title: str, targets: List[Dict[str, Any]]) -> Tuple[Optional[Dic
         target_id = str(trg.get("id", "")).upper()
         is_generic_target = target_id.endswith("_GENERIC")
 
-        if CC_STRICT_KEYWORDS and isinstance(kws, list) and len(kws) > 0 and not is_generic_target:
+        if isinstance(kws, list) and len(kws) > 0 and not is_generic_target:
             if hits < 1:
-                pre_score = compute_match_score(title, trg)
-                if pre_score < (CC_MIN_MATCH_SCORE + 8):
-                    continue
+                continue  # Non-generic targets ALWAYS require ≥1 keyword hit
 
         s = compute_match_score(title, trg)
         if s > best_s:
@@ -988,8 +1296,19 @@ def run() -> None:
         if has_any(listing.title, BAD_COND_TERMS):
             continue
 
-        target, match, hits = best_target(listing.title, targets)
+        # Match on title + description
+        match_text = listing.title
+        if listing.description:
+            match_text = listing.title + " " + listing.description[:300]
+        target, match, hits = best_target(match_text, targets)
         identity = resolve_listing_identity(listing.title, summarize_visual_hints(vision_hints.get(listing.url, {})), model_master)
+
+        # ── LEVEL 1: description-based movement filter ───────────────────────
+        detected_movement = "unknown"
+        if target is not None:
+            target, match, hits, detected_movement = apply_description_filter(
+                listing, target, match, hits, targets
+            )
 
         # NOTE: identity target override DISABLED — model_master.json only has 5 Tissot models.
         # Enabling it caused all Seiko watches to be forced into SEIKO_PROSPEX_TURTLE_AUTO
@@ -1027,6 +1346,8 @@ def run() -> None:
                         "url": listing.url,
                         "match": match,
                         "kw_hits": hits,
+                        "vision":   vision_data,
+                        "movement": detected_movement,
                         "target": target.get("id"),
                         "cond": listing.cond,
                     }
@@ -1047,6 +1368,8 @@ def run() -> None:
                         "url": listing.url,
                         "match": match,
                         "kw_hits": hits,
+                        "vision":   vision_data,
+                        "movement": detected_movement,
                         "target": target.get("id"),
                         "cond": listing.cond,
                         "reason": "missing_chrono_evidence",
@@ -1067,6 +1390,8 @@ def run() -> None:
                         "url": listing.url,
                         "match": match,
                         "kw_hits": hits,
+                        "vision":   vision_data,
+                        "movement": detected_movement,
                         "target": target.get("id"),
                         "cond": listing.cond,
                         "reason": "over_max_buy",
@@ -1095,6 +1420,8 @@ def run() -> None:
                         "url": listing.url,
                         "match": match,
                         "kw_hits": hits,
+                        "vision":   vision_data,
+                        "movement": detected_movement,
                         "target": target.get("id"),
                         "cond": listing.cond,
                         "net": net,
@@ -1134,6 +1461,24 @@ def run() -> None:
 
         # CC: prices non-negotiable, brand & match already validated → use "medium" as default
         # instead of "low" (which causes blanket SKIP when model_master doesn't know the model)
+        # ── VISION ANALYSIS ──────────────────────────────────────────────────
+        # Only called when listing has an image and has passed net/ROI filter.
+        # Corrects quartz/auto mismatch before gate decision.
+        vision_data = None
+        if CC_VISION_ENABLED and listing.image_url:
+            target, match, hits, vision_data = apply_vision_to_match(
+                listing, target, match, hits, targets
+            )
+            # If vision downgraded match below threshold, drop
+            if match < CC_MIN_MATCH_SCORE:
+                diag["dropped"]["no_kw_hit"] += 1
+                continue
+            # Recalculate close/net with potentially new target
+            close_est, listing_flags = estimate_close_eur(target, listing.cond, match_text)
+            net, roi = estimate_net(listing.price_eur, close_est)
+            if net < CC_MIN_NET_EUR or roi < CC_MIN_NET_ROI:
+                continue
+
         # CC: precio fijo, marca validada, match ya superado.
         # Pasamos "medium"/False directamente — identity devuelve "low" (truthy) para
         # modelos no en model_master, y "low" or "medium" = "low" en Python (bug previo).
@@ -1193,12 +1538,18 @@ def run() -> None:
     candidates.sort(key=lambda x: (x.get("score", 0), x["net"], x["match"]), reverse=True)
     top = candidates[:10]
 
-    header = f"🕗 TIMELAB Morning Scan — TOP {len(top)} (CashConverters ES)\n\n"
+    from datetime import datetime as _dt
+    hora = _dt.now().strftime("%H:%M")
+    sep_heavy = "━" * 26
 
     if not top:
-        telegram_send(header + "No se encontraron oportunidades que cumplan filtros (marca reputada + match + net/ROI).")
+        telegram_send(
+            f"⌚ TIMELAB · Cash Converters · {hora}\n{sep_heavy}\n"
+            f"😴 Sin oportunidades hoy\n"
+            f"Escaneados: {diag['scanned']} · Con marca: {diag['brands']['reputable']}"
+        )
     else:
-        lines = [header]
+        lines = [f"⌚ TIMELAB · Cash Converters · {hora}", sep_heavy, ""]
         for i, it in enumerate(top, 1):
             bucket      = it.get("bucket", "BUY")
             emoji       = "🟢" if "BUY" in bucket else "🟡"
@@ -1234,25 +1585,77 @@ def run() -> None:
             trend  = val.get("last_90d_trend", 0)
             trend_str = f"+{trend:.0f}€" if trend > 0 else (f"{trend:.0f}€" if trend < 0 else "estable")
 
-            lines.append(f"{i}) {emoji} [{bucket}] [CC] {listing.title}")
-            lines.append(f"   💶 Compra: {listing.price_eur:.0f}€  |  🎯 Cierre Catawiki: {it['close_est']:.0f}€")
-            lines.append(f"   ✅ Neto: {it['net']:.0f}€  |  ROI: {it['roi']*100:.1f}%  |  Score: {it.get('score', 0)}")
-            # BUG-3 FIX: show Chrono24 alternative when relevant
-            if c24.get("suggested") and c24.get("net", 0) > 0:
-                lines.append(
-                    f"   📈 Chrono24 mejor → cierre est. {c24['close_est']:.0f}€  |  neto {c24['net']:.0f}€  |  ROI {c24['roi']*100:.1f}%"
-                )
-            elif c24.get("close_est", 0) > 0:
-                lines.append(
-                    f"   📊 Chrono24 alt. → cierre est. {c24['close_est']:.0f}€  |  neto {c24['net']:.0f}€  |  ROI {c24['roi']*100:.1f}%"
-                )
-            lines.append(f"   📦 Estado: {listing.cond}  |  {flags_str}  |  Match: {it['match']}  |  KW: {it['kw_hits']}")
-            lines.append(f"   🏷️ Target: {target_obj.get('id', 'N/A')}  |  Risk: {','.join(it.get('reason_flags', [])) or 'ok'}")
-            lines.append(f"   📊 Hammer rango: {h_low:.0f}–{h_base:.0f}–{h_high:.0f}€  |  muestras:{n}  |  tendencia:{trend_str}")
-            lines.append(f"   🎯 Confianza: {conf_str}")
-            lines.append(f"   🧠 {expl.get('bucket_reason', '')[:120]}")
-            lines.append(f"   📍 {listing.store}")
-            lines.append(f"   🔗 {listing.url}\n")
+            # ── Human-readable watch name from title ──────────────────────
+            # Capitalise title, strip the generic "reloj pulsera caballero/unisex" prefix
+            import re as _re
+            clean_title = listing.title
+            for prefix in ["reloj pulsera caballero ","reloj pulsera unisex ",
+                           "reloj pulsera senora ","reloj bolsillo ","reloj "]:
+                if clean_title.lower().startswith(prefix):
+                    clean_title = clean_title[len(prefix):]
+                    break
+            clean_title = clean_title.strip().title()
+
+            # ── ROI colour ────────────────────────────────────────────────────
+            roi_pct = it["roi"] * 100
+            if roi_pct >= 120:   roi_emoji = "🚀"
+            elif roi_pct >= 80:  roi_emoji = "💚"
+            elif roi_pct >= 50:  roi_emoji = "🟡"
+            else:                roi_emoji = "🔵"
+
+            # ── Movement label ────────────────────────────────────────────────
+            mov = it.get("movement", "unknown")
+            MOV_LABEL = {
+                "automatic": "⚙️ Automático",
+                "manual":    "🔑 Cuerda manual",
+                "quartz":    "🔋 Cuarzo",
+                "solar":     "☀️ Solar",
+                "kinetic":   "⚡ Kinetic",
+                "unknown":   "❓ Mov. desconocido",
+            }
+            mov_label = MOV_LABEL.get(mov, "❓ " + mov)
+
+            # ── Extras compact ────────────────────────────────────────────────
+            extras = []
+            if flags.get("has_box"):     extras.append("📦 caja")
+            if flags.get("has_papers"):  extras.append("📄 papeles")
+            if flags.get("has_service"): extras.append("🔧 revisado")
+            if flags.get("is_nos"):      extras.append("✨ NOS")
+            if flags.get("is_full_set"): extras.append("🎁 full set")
+            extras_str = "  ".join(extras) if extras else "sin extras"
+
+            # ── Cond readable ─────────────────────────────────────────────────
+            COND_MAP = {
+                "perfecto":"🌟 Perfecto","impecable":"🌟 Impecable",
+                "muy bueno":"👍 Muy bueno","excelente":"👍 Excelente",
+                "bueno":"✔️ Bueno","usado":"⚠️ Usado",
+                "real":"✔️ Bueno","de uso":"⚠️ Usado",
+            }
+            cond_str = next((v for k,v in COND_MAP.items() if k in (listing.cond or "")), f"📋 {listing.cond}")
+
+            # ── Trend arrow ───────────────────────────────────────────────────
+            trend_arrow = "↑" if trend > 5 else ("↓" if trend < -5 else "→")
+
+            # ── Build the card ────────────────────────────────────────────────
+            sep = "──────────────────────────"
+            lines.append(sep)
+            lines.append(f"{i}) {emoji} {bucket}  ·  Cash Converters")
+            lines.append(f"🏷 *{clean_title}*")
+            lines.append("")
+            lines.append(f"💶 Compra: *{listing.price_eur:.0f}€*")
+            lines.append(f"🎯 Catawiki: ~*{it['close_est']:.0f}€*  ·  +{it['net']:.0f}€ neto  ·  {roi_emoji} {roi_pct:.0f}% ROI")
+            if c24.get("close_est", 0) > 0:
+                c24_label = "📈 Chrono24 (mejor):" if c24.get("suggested") else "📊 Chrono24 (alt.):"
+                lines.append(f"{c24_label} ~{c24['close_est']:.0f}€  ·  +{c24['net']:.0f}€  ·  {c24['roi']*100:.0f}% ROI")
+            lines.append("")
+            lines.append(f"{mov_label}  ·  {cond_str}")
+            if extras_str != "sin extras":
+                lines.append(f"{extras_str}")
+            if n > 0:
+                lines.append(f"📊 Rango Catawiki: {h_low:.0f}–{h_base:.0f}–{h_high:.0f}€  ({n} ventas, {trend_arrow})")
+            lines.append("")
+            lines.append(f"🔗 {listing.url}")
+            lines.append("")
 
         telegram_send("\n".join(lines).strip())
 
