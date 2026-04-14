@@ -578,15 +578,8 @@ def run() -> None:
         target, match, hits = best_target(full_text, targets)
         identity = resolve_listing_identity(full_text, None, model_master)
 
-        if identity.get("target_id"):
-            forced = next(
-                (t for t in targets if str(t.get("id", "")).upper() == str(identity.get("target_id", "")).upper()),
-                None,
-            )
-            if forced:
-                target = forced
-                match  = max(match, int(identity.get("final_match_score", 0)))
-                hits   = max(hits, int(identity.get("keyword_score", 0) // 6))
+        # NOTE: identity target override DISABLED — model_master only has 5 Tissot models.
+    # if identity.get("target_id"): ...
 
         if target is None or match < WP_MIN_MATCH:
             continue
@@ -648,10 +641,12 @@ def run() -> None:
         bucket = bucket_from_score(opp_score, is_generic=is_generic, discovery=False)
 
         match_band = identity.get("match_confidence_band", "low")
+        # WP: marca validada, match ya superado. Pasar "medium"/False directamente.
+        # identity.get("match_confidence_band") devuelve "low" (truthy) → "low" or "medium" = "low" en Python.
         gate = gate_decision(
-            match_band, sample_size, valuation_conf,
+            "medium", sample_size, valuation_conf,
             net, roi, risk in ALLOW_FAKE_RISK,
-            bool(identity.get("model_ambiguity", True)),
+            False,
         )
         if gate == "SKIP":
             continue
