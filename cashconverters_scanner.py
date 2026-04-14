@@ -991,12 +991,12 @@ def run() -> None:
         target, match, hits = best_target(listing.title, targets)
         identity = resolve_listing_identity(listing.title, summarize_visual_hints(vision_hints.get(listing.url, {})), model_master)
 
-        if identity.get("target_id"):
-            forced = next((t for t in targets if str(t.get("id", "")).upper() == str(identity.get("target_id", "")).upper()), None)
-            if forced is not None:
-                target = forced
-                match = max(match, int(identity.get("final_match_score", 0)))
-                hits = max(hits, int(identity.get("keyword_score", 0) // 6))
+        # NOTE: identity target override DISABLED — model_master.json only has 5 Tissot models.
+        # Enabling it caused all Seiko watches to be forced into SEIKO_PROSPEX_TURTLE_AUTO
+        # with its p50=520, giving completely fictitious profit estimates.
+        # Re-enable when model_master is properly populated with all targets.
+        # if identity.get("target_id"):
+        #     forced = next(...)
 
         if target is None:
             diag["dropped"]["no_kw_hit"] += 1
