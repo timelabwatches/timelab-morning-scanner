@@ -40,11 +40,34 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-          EBAY_COOLDOWN_H: "72"
-          EBAY_PRICE_REPOST_PCT: "10"
-          EBAY_STATE_PATH: "state_ebay.json"
+          MIN_NET_EUR: "20"
+          MIN_NET_ROI: "0.05"
+          MIN_MATCH_SCORE: "60"
+          ALLOW_FAKE_RISK: "low,medium"
+          BUY_MAX_MULT: "1.25"
+          CATWIKI_COMMISSION: "0.125"
+          PACKAGING_EUR: "5.0"
+          MISC_EUR: "5.0"
+          SHIP_ARBITRAGE_EUR: "35.0"
+          EFFECTIVE_TAX_RATE_ON_PROFIT: "0.15"
+          HTTP_TIMEOUT: "25"
+          EBAY_MARKETPLACE_ID: "EBAY_ES"
+          EBAY_LIMIT: "50"
+          EBAY_THROTTLE_S: "0.35"
+          EBAY_DEFAULT_CATEGORY_ID: "31387"
+          EBAY_ALLOWED_CATEGORY_IDS: "31387"
+          DETAIL_FETCH_N: "35"
+          EBAY_DETAIL_THROTTLE_S: "0.20"
+          TG_MAX_LEN: "3500"
+          COOLDOWN_HOURS: "72"
+          PRICE_DROP_REPOST: "0.10"
+          TARGET_LIST_PATH: "target_list.json"
+          MODEL_MASTER_PATH: "data/model_master.json"
+          COMPARABLES_PATH: "data/market_comp_db.json"
+          TARGET_STATS_PATH: "data/target_stats.json"
+          EBAY_STATE_PATH: "state/state_ebay.json"
         run: |
-          python scanner.py
+          python main.py  # BUG-4 FIX: replaced scanner.py (old) with main.py (new pipeline)
 
       - name: Commit eBay state
         if: always()
@@ -53,9 +76,9 @@ jobs:
           if [ -f "state_ebay.json" ]; then
             git config user.name "timelab-bot"
             git config user.email "timelab-bot@users.noreply.github.com"
-            git add state_ebay.json || true
+            git add state/state_ebay.json || true
             if ! git diff --cached --quiet; then
-              git commit -m "Update eBay state" || true
+              git commit -m "Update eBay state [main.py]" || true
               git push || true
             fi
           fi

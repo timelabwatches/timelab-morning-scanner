@@ -2,8 +2,10 @@ name: TIMELAB Morning Scan
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 7 * * *"
+  # BUG-4 FIX: schedule disabled — eBay is now run by morning.yml (main.py).
+  # Keep this file for manual testing only via workflow_dispatch.
+  # schedule:
+  #   - cron: "0 7 * * *"
 
 jobs:
   run-scan:

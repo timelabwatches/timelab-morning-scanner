@@ -103,7 +103,14 @@ LADIES_TERMS = [
 ]
 
 CATWIKI_COMMISSION_RATE = float(os.getenv("CATWIKI_COMMISSION_RATE", "0.125"))
-CATWIKI_COMMISSION_VAT = float(os.getenv("CATWIKI_COMMISSION_VAT", "0.21"))
+CATWIKI_COMMISSION_VAT  = float(os.getenv("CATWIKI_COMMISSION_VAT",  "0.21"))
+# CC ships for FREE to the seller. Catawiki charges ~50€ shipping to the buyer;
+# real cost is ~10-15€ → ~35€ net arbitrage per operation (same as Wallapop/eBay).
+SHIP_ARB_EUR = float(os.getenv("SHIP_ARB_EUR", "35.0"))
+# Chrono24: 6.5% seller fee (no shipping arbitrage — handled separately per listing).
+CHRONO24_FEE_RATE    = float(os.getenv("CHRONO24_FEE_RATE",    "0.065"))
+CHRONO24_PRICE_MULT  = float(os.getenv("CHRONO24_PRICE_MULT",  "1.20"))   # C24 BIN prices ~20% above Catawiki p50
+CHRONO24_MIN_BUY_EUR = float(os.getenv("CHRONO24_MIN_BUY_EUR", "200.0"))  # Only suggest C24 above this buy price
 
 
 def env_int(name: str, default: int) -> int:
@@ -837,14 +844,32 @@ def estimate_close_eur(target: Dict[str, Any], cond: str, title: str) -> Tuple[f
     return close, flags
 
 
-def estimate_net(buy_eur: float, close_eur: float, shipping_eur: float = 0.0) -> Tuple[float, float]:
+def estimate_net(buy_eur: float, close_eur: float) -> Tuple[float, float]:
+    """
+    Net profit for a CashConverters purchase sold on Catawiki.
+    CC ships for FREE to the seller (no shipping cost on buy side).
+    Catawiki shipping arbitrage (+35€) still applies on the sell side.
+    Formula: close * (1 - fee) + SHIP_ARB - buy
+    """
     commission = close_eur * CATWIKI_COMMISSION_RATE
     commission_vat = commission * CATWIKI_COMMISSION_VAT
     fees = commission + commission_vat
-    net = close_eur - fees - buy_eur - shipping_eur
-    denom = max(1e-9, (buy_eur + shipping_eur))
-    roi = net / denom
+    net = close_eur - fees + SHIP_ARB_EUR - buy_eur
+    roi = net / max(1e-9, buy_eur)
     return round(net, 2), round(roi, 4)
+
+
+def estimate_chrono24(buy_eur: float, catawiki_p50: float) -> Tuple[float, float, float]:
+    """
+    Alternative net profit if sold on Chrono24 instead of Catawiki.
+    C24 fee: 6.5%. No shipping arbitrage (separate from Catawiki structure).
+    C24 BIN price estimated as catawiki_p50 * CHRONO24_PRICE_MULT (~1.20).
+    Returns: (c24_close_est, c24_net, c24_roi)
+    """
+    c24_close = round(catawiki_p50 * CHRONO24_PRICE_MULT, 2)
+    c24_net   = round(c24_close * (1 - CHRONO24_FEE_RATE) - buy_eur, 2)
+    c24_roi   = round(c24_net / max(1e-9, buy_eur), 4)
+    return c24_close, c24_net, c24_roi
 
 
 def risk_allowed(target: Dict[str, Any]) -> bool:
@@ -872,6 +897,8 @@ def run() -> None:
             f"error: {type(e).__name__}: {e}"
         )
         return
+
+
 
     diag: Dict[str, Any] = {
         "scanned": 0,
@@ -1047,8 +1074,17 @@ def run() -> None:
                 )
             continue
 
-        shipping = 0.0
-        net, roi = estimate_net(listing.price_eur, close_est, shipping)
+        shipping = 0.0  # CC ships for free to seller
+        net, roi = estimate_net(listing.price_eur, close_est)
+
+        # BUG-3 FIX: Chrono24 alternative estimate (only for watches above threshold)
+        est_block = target.get("catawiki_estimate", {})
+        p50_raw   = float(est_block.get("p50", 0) or 0)
+        c24_close, c24_net, c24_roi = (0.0, 0.0, 0.0)
+        suggest_c24 = False
+        if listing.price_eur >= CHRONO24_MIN_BUY_EUR and p50_raw > 0:
+            c24_close, c24_net, c24_roi = estimate_chrono24(listing.price_eur, p50_raw)
+            suggest_c24 = c24_net > net  # True when C24 beats Catawiki
 
         if not (net >= CC_MIN_NET_EUR and roi >= CC_MIN_NET_ROI):
             if CC_VERIFY_MODE:
@@ -1140,6 +1176,12 @@ def run() -> None:
                     "valuation_confidence": valuation_conf,
                     "last_90d_trend": trend_90d,
                 },
+                "chrono24": {
+                    "suggested": suggest_c24,
+                    "close_est": c24_close,
+                    "net":       c24_net,
+                    "roi":       c24_roi,
+                },
             }
         )
 
@@ -1153,22 +1195,57 @@ def run() -> None:
     else:
         lines = [header]
         for i, it in enumerate(top, 1):
-            bucket = it.get("bucket", "BUY")
-            emoji = "🟢" if bucket == "BUY" else "🟡"
-            listing = it["listing"]
-            target_obj = it["target"]
+            bucket      = it.get("bucket", "BUY")
+            emoji       = "🟢" if "BUY" in bucket else "🟡"
+            listing     = it["listing"]
+            target_obj  = it["target"]
+            flags       = it.get("flags", {})
+            expl        = it.get("explain", {})
+            val         = it.get("valuation", {})
+            c24         = it.get("chrono24", {})
+            conf        = it.get("confidence", {})
+
+            # Flags as compact readable string instead of raw dict
+            flag_parts = []
+            if flags.get("has_box"):    flag_parts.append("📦caja")
+            if flags.get("has_papers"): flag_parts.append("📄papeles")
+            if flags.get("has_service"):flag_parts.append("🔧revisado")
+            if flags.get("is_nos"):     flag_parts.append("✨NOS")
+            if flags.get("is_full_set"):flag_parts.append("🎁full set")
+            flags_str = " ".join(flag_parts) or "sin extras"
+
+            # Confidence as compact string
+            conf_str = (
+                f"precio:{conf.get('price_confidence','?')} "
+                f"match:{conf.get('match_confidence','?')} "
+                f"cierre:{conf.get('close_estimate_confidence','?')}"
+            )
+
+            # Valuation range
+            h_low  = val.get("hammer_low",  0)
+            h_base = val.get("hammer_base", 0)
+            h_high = val.get("hammer_high", 0)
+            n      = val.get("sample_size", 0)
+            trend  = val.get("last_90d_trend", 0)
+            trend_str = f"+{trend:.0f}€" if trend > 0 else (f"{trend:.0f}€" if trend < 0 else "estable")
 
             lines.append(f"{i}) {emoji} [{bucket}] [CC] {listing.title}")
-            lines.append(f"   💶 Compra: {listing.price_eur:.2f}€ | 🎯 Cierre est.: {it['close_est']:.2f}€")
-            lines.append(
-                f"   ✅ Neto est.: {it['net']:.2f}€ | ROI: {it['roi']*100:.1f}% | "
-                f"Score: {it.get('score', 0)} | Match: {it['match']} | KW: {it['kw_hits']} | Cond: {listing.cond}"
-            )
-            lines.append(f"   🏷️ Flags: {it.get('flags', {})} | Risk: {','.join(it.get('reason_flags', [])) or 'none'} | Disp: {listing.availability}")
-            lines.append(f"   🎯 Confidence: {it.get('confidence', {})} | 👁️ Visual: {it.get('visual', {})}")
-            lines.append(f"   📊 Valuation: {it.get('valuation', {})}")
-            lines.append(f"   🧠 Why: {it.get('explain', {}).get('bucket_reason', '')} | Evidence: ref={it.get('explain', {}).get('reference_score')} spec={it.get('explain', {}).get('spec_score')}")
-            lines.append(f"   🧩 Target: {target_obj.get('id', 'N/A')}")
+            lines.append(f"   💶 Compra: {listing.price_eur:.0f}€  |  🎯 Cierre Catawiki: {it['close_est']:.0f}€")
+            lines.append(f"   ✅ Neto: {it['net']:.0f}€  |  ROI: {it['roi']*100:.1f}%  |  Score: {it.get('score', 0)}")
+            # BUG-3 FIX: show Chrono24 alternative when relevant
+            if c24.get("suggested") and c24.get("net", 0) > 0:
+                lines.append(
+                    f"   📈 Chrono24 mejor → cierre est. {c24['close_est']:.0f}€  |  neto {c24['net']:.0f}€  |  ROI {c24['roi']*100:.1f}%"
+                )
+            elif c24.get("close_est", 0) > 0:
+                lines.append(
+                    f"   📊 Chrono24 alt. → cierre est. {c24['close_est']:.0f}€  |  neto {c24['net']:.0f}€  |  ROI {c24['roi']*100:.1f}%"
+                )
+            lines.append(f"   📦 Estado: {listing.cond}  |  {flags_str}  |  Match: {it['match']}  |  KW: {it['kw_hits']}")
+            lines.append(f"   🏷️ Target: {target_obj.get('id', 'N/A')}  |  Risk: {','.join(it.get('reason_flags', [])) or 'ok'}")
+            lines.append(f"   📊 Hammer rango: {h_low:.0f}–{h_base:.0f}–{h_high:.0f}€  |  muestras:{n}  |  tendencia:{trend_str}")
+            lines.append(f"   🎯 Confianza: {conf_str}")
+            lines.append(f"   🧠 {expl.get('bucket_reason', '')[:120]}")
             lines.append(f"   📍 {listing.store}")
             lines.append(f"   🔗 {listing.url}\n")
 
