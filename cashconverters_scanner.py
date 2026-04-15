@@ -769,22 +769,17 @@ def parse_detail_page(html: str, url: str) -> Listing:
         availability.append("tienda")
     availability_str = "desconocido" if not availability else " + ".join(availability)
 
-    # Extract description text (first 800 chars of product description block)
+    # Extract description = search for "tipo de movimiento" in full text_all
+    # CC's ficha técnica is an expandable section that may appear anywhere in page text.
+    # We extract a focused window around the movement keyword if found,
+    # otherwise use the last 800 chars where ficha técnica typically sits.
     description = ""
-    for sel in ["div.product-description", "div.description", "p.description",
-                "div[class*='detail']", "div[class*='product']"]:
-        el = soup.select_one(sel)
-        if el:
-            description = canon(el.get_text(" ", strip=True))[:800]
-            break
-    if not description:
-        # Fallback: use text_all but strip nav/footer noise (first 600 chars after title)
-        try:
-            idx = text_all.find(canon(title[:20]))
-            if idx >= 0:
-                description = text_all[idx:idx+600]
-        except Exception:
-            pass
+    mov_idx = text_all.find("tipo de movimiento")
+    if mov_idx >= 0:
+        description = text_all[max(0, mov_idx - 50): mov_idx + 200]
+    else:
+        # Fallback: last portion of page text contains ficha técnica
+        description = text_all[-800:] if len(text_all) > 800 else text_all
 
     # Extract main product image URL
     image_url = ""
@@ -950,7 +945,7 @@ def target_requires_chrono_evidence(target: Dict[str, Any]) -> bool:
 def detect_movement_from_text(title: str, description: str) -> str:
     """
     Returns: 'automatic' | 'manual' | 'quartz' | 'solar' | 'kinetic' | 'unknown'
-    Uses page description text first, falls back to title keywords.
+    Uses page description text (CC ficha técnica included in text_all).
     """
     text = canon(title + " " + description)
 
@@ -959,6 +954,8 @@ def detect_movement_from_text(title: str, description: str) -> str:
         "cuarzo", "quartz", "quarzo", "battery", "bateria", "batería",
         "solar", "kinetic", "eco-drive", "eco drive", "light powered",
         "radio controlled", "radio-controlled", "atomic",
+        # CC ficha técnica specific
+        "tipo de movimiento: cuarzo", "tipo de movimiento : cuarzo",
     ]):
         if "solar" in text: return "solar"
         if "kinetic" in text: return "kinetic"
@@ -968,6 +965,8 @@ def detect_movement_from_text(title: str, description: str) -> str:
     if any(w in text for w in [
         "cuerda manual", "manual wind", "hand wind", "carga manual",
         "remontage manuel", "carica manuale",
+        # CC ficha técnica
+        "tipo de movimiento: cuerda", "tipo de movimiento : cuerda",
     ]):
         return "manual"
 
@@ -976,9 +975,27 @@ def detect_movement_from_text(title: str, description: str) -> str:
         "automático", "automatico", "automatic", "automat",
         "self-winding", "self winding", "rotor", "powermatic",
         "calibre automático", "movimiento automático",
+        # CC ficha técnica
+        "tipo de movimiento: automático", "tipo de movimiento : automático",
+        "tipo de movimiento: automatico",
+        # Common calibre markers
         "eta 28", "eta 25", "valjoux", "miyota", "nh35", "nh36",
         "7s26", "7s36", "4r35", "4r36", "6r15",
+        "srp", "srpc", "srpe",   # Seiko Prospex automatic refs
+        "powermatic 80", "pm80",
     ]):
+        return "automatic"
+
+    # ── Reference-number based detection ─────────────────────────────────────
+    # Seiko quartz calibres: 7T42, 7T32, 7T82, 7T92, 5Y22, 5Y23, V739, V8xx
+    import re as _re_ref
+    if _re_ref.search(r'\b7t[348][0-9]\b|\b5y2[0-9]\b|\bv739\b|\bv8[0-9]\b', text):
+        return "quartz"
+    # Tissot quartz: T120.417 (Seastar Chrono), V8 model, PR50
+    if _re_ref.search(r't120[._]41[0-9]|pr50|tissot v8\b', text):
+        return "quartz"
+    # Seiko 5 / SNK family → automatic
+    if _re_ref.search(r'\bsnk[a-z0-9]{2,6}\b|\bsnab\b', text):
         return "automatic"
 
     return "unknown"

@@ -987,6 +987,42 @@ def estimate_hammer_from_kb(kb_data: dict | None, record: dict) -> dict:
     return empty_estimate("unsupported_kb_source_quality")
 
 
+# Movement types that require a price penalty on fallback estimates
+_ELECTRONIC_MOVEMENTS = {"quartz", "solar", "kinetic", "battery", "eco-drive"}
+
+def _detect_movement_type(record: dict) -> str:
+    """Lightweight movement type detection from title + raw_text."""
+    text = normalize_text(
+        (record.get("title") or "") + " " +
+        (record.get("raw_text") or "") + " " +
+        (record.get("movement_hint") or "")
+    )
+    if any(w in text for w in ["quartz", "cuarzo", "quarzo", "battery", "pile",
+                                "solar", "kinetic", "eco-drive", "ecodrive"]):
+        if "solar" in text: return "solar"
+        if "kinetic" in text: return "kinetic"
+        return "quartz"
+    if any(w in text for w in ["automatic", "automatico", "automático", "powermatic",
+                                "self-winding", "rotor", "eta 28", "nh35", "nh36"]):
+        return "automatic"
+
+    # ── Model-specific quartz rules ──────────────────────────────────────────
+    # Tissot Seastar 1000 Chronograph: the PM80 automatic is NEVER a chronograph.
+    # All Seastar chronographs (T120.417) are quartz. Same for PRX Chronograph.
+    brand = normalize_text(record.get("brand") or "")
+    family = normalize_text(infer_family_from_text(record, brand) or "")
+    is_chrono = any(w in text for w in ["chronograph", "chrono", "cronografo"])
+    if brand == "tissot" and "seastar" in family and is_chrono:
+        return "quartz"
+    if brand == "tissot" and "prx" in family and is_chrono:
+        return "quartz"
+    # T120.417.xx refs are all quartz chronographs
+    if "t120.417" in text or "t120417" in text:
+        return "quartz"
+
+    return "unknown"
+
+
 def apply_auction_price_engine(record: dict) -> dict:
     is_ladies, ladies_reason = infer_ladies_flag(record)
     record["is_ladies_inferred"] = is_ladies
@@ -995,6 +1031,10 @@ def apply_auction_price_engine(record: dict) -> dict:
     if is_ladies:
         record["auction_estimate"] = empty_estimate(f"ladies_watch_blocked:{ladies_reason}")
         return record
+
+    # Detect movement type for price adjustment
+    movement_type = _detect_movement_type(record)
+    record["movement_hint"] = record.get("movement_hint") or movement_type
 
     seed_estimate = estimate_hammer_from_seed(record)
     if seed_estimate:
@@ -1009,6 +1049,20 @@ def apply_auction_price_engine(record: dict) -> dict:
 
     brand_fallback_estimate = estimate_hammer_from_brand_fallback(record)
     if brand_fallback_estimate:
+        # Apply quartz penalty: brand_family_fallbacks are calibrated for automatic watches.
+        # Quartz versions are worth ~45% of the automatic estimate on Catawiki.
+        # Applied to ALL brand_family_fallback estimates when movement is electronic —
+        # no need to check specific families since all fallbacks assume mechanical.
+        if movement_type in _ELECTRONIC_MOVEMENTS:
+            est = brand_fallback_estimate
+            penalty = 0.45
+            est["raw_expected_hammer"] = round((est.get("raw_expected_hammer") or 0) * penalty, 2)
+            est["expected_hammer"]     = round((est.get("expected_hammer") or 0) * penalty, 2)
+            est["conservative_hammer"] = round((est.get("conservative_hammer") or 0) * penalty, 2)
+            est["optimistic_hammer"]   = round((est.get("optimistic_hammer") or 0) * penalty, 2)
+            est["pricing_reason"]      = (est.get("pricing_reason") or "") + "_quartz_penalty"
+            brand_fallback_estimate = est
+
         record["auction_estimate"] = brand_fallback_estimate
         return record
 

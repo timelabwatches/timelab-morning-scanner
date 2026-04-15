@@ -21,7 +21,11 @@ GLOBAL_ACCESSORY_TERMS = {
     "instruction", "instructions", "manual", "manuale", "booklet", "libretto",
     "gebrauchsanleitung", "catalog", "catalogue", "catalogo",
     "box only", "only box", "solo caja", "caja sola", "caja solo",
-    "watch box", "uhrenbox", "scatola", "scatola orologio", "boite", "boîte",
+    "watch box", "uhrenbox", "scatola", "scatola orologio",
+    "estuche", "cristal para", "verre pour", "glass for", "crystal for",
+    "cassa orologio", "boitier montre", "gehäuse für",
+    "brochure", "catalogue", "catalogo", "uhrenprospekt", "watch manual",
+    "vintage box", "vintage watch box", "boite", "boîte",
 }
 
 WATCH_INDICATORS = {
@@ -54,6 +58,9 @@ INCOMPLETE_HARD_TERMS = {
     "watch case", "case only", "dial only", "only dial", "boitier", "boîtier",
     "solo esfera", "only hands", "set of hands", "crown only", "stem only",
     "center wheel", "wheel part", "balance staff", "main plate", "mainplate",
+    # Document/accessory listings — always filter regardless of watch context
+    "brochure", "catalogue", "catalogo", "uhrenprospekt", "watch catalogue",
+    "vintage box only", "box only watch",
 }
 
 GLOBAL_HARD_BAD_TERMS = {
@@ -135,6 +142,10 @@ PARTS_ONLY_PATTERNS = [
     r"\bohne uhrwerk\b",
     r"\bcenter wheel\b",
     r"\bwheel part\b",
+    r"\bcassa orologio\b",
+    r"\bcristal para\b",
+    r"\bglass for\b",
+    r"\bverre pour\b",
 ]
 
 CASE_SIZE_PATTERN = r"\b(\d{1,2})\s?mm\b"
