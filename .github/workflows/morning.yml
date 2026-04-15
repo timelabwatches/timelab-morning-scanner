@@ -1,0 +1,159 @@
+name: timelab-morning-scanner-v2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 7 * * *"   # 07:30 UTC = 08:30 Madrid (invierno) / 09:30 (verano)
+
+permissions:
+  contents: write
+
+jobs:
+
+  # ─────────────────────────────────────────────
+  # JOB 1 — eBay API scanner
+  # ─────────────────────────────────────────────
+  run-ebay-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run eBay scanner
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+          MIN_NET_EUR: "20"
+          MIN_NET_ROI: "0.05"
+          MIN_MATCH_SCORE: "60"
+          ALLOW_FAKE_RISK: "low,medium"
+          BUY_MAX_MULT: "1.25"
+          CATWIKI_COMMISSION: "0.125"
+          PACKAGING_EUR: "5.0"
+          MISC_EUR: "5.0"
+          SHIP_ARBITRAGE_EUR: "35.0"
+          EFFECTIVE_TAX_RATE_ON_PROFIT: "0.15"
+          HTTP_TIMEOUT: "25"
+          EBAY_MARKETPLACE_ID: "EBAY_ES"
+          EBAY_LIMIT: "50"
+          EBAY_THROTTLE_S: "0.35"
+          EBAY_DEFAULT_CATEGORY_ID: "31387"
+          EBAY_ALLOWED_CATEGORY_IDS: "31387"
+          DETAIL_FETCH_N: "35"
+          EBAY_DETAIL_THROTTLE_S: "0.20"
+          TG_MAX_LEN: "3500"
+          COOLDOWN_HOURS: "48"
+          PRICE_DROP_REPOST: "0.10"
+          TARGET_LIST_PATH: "target_list.json"
+          MODEL_MASTER_PATH: "data/model_master.json"
+          COMPARABLES_PATH: "data/market_comp_db.json"
+          TARGET_STATS_PATH: "data/target_stats.json"
+          EBAY_STATE_PATH: "state/state_ebay.json"
+        run: |
+          python main.py  # BUG-4 FIX: replaced scanner.py (old) with main.py (new pipeline)
+
+      - name: Commit eBay state
+        if: always()
+        run: |
+          set -e
+          git config user.name "timelab-bot"
+          git config user.email "timelab-bot@users.noreply.github.com"
+          git add state/state_ebay.json || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Update eBay state [main.py]" || true
+            git push || true
+          fi
+
+  # ─────────────────────────────────────────────
+  # JOB 2 — CashConverters scraper
+  # ─────────────────────────────────────────────
+  run-cashconverters-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml
+
+      - name: Run CashConverters scanner
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CC_MAX_ITEMS: "500"
+          CC_TIMEOUT: "20"
+          CC_THROTTLE_S: "0.7"
+          CC_MIN_MATCH_SCORE: "55"
+          CC_MIN_NET_EUR: "20"
+          CC_MIN_NET_ROI: "0.08"
+          CLOSE_HAIRCUT: "0.90"
+          CC_GOOD_BRANDS_TARGET: "60"
+          CC_DEBUG: "1"
+        run: |
+          python cashconverters_scanner.py
+
+  # ─────────────────────────────────────────────
+  # JOB 3 — Wallapop scanner (nuevo)
+  # Corre en paralelo con eBay y CC
+  # ─────────────────────────────────────────────
+  run-wallapop-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run Wallapop scanner
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WP_MAX_ITEMS: "200"
+          WP_THROTTLE_S: "0.6"
+          WP_TIMEOUT: "20"
+          WP_MIN_MATCH: "60"
+          WP_MIN_NET_EUR: "20"
+          WP_MIN_NET_ROI: "0.10"
+          WP_CLOSE_HAIRCUT: "0.88"
+          WP_DEBUG: "1"
+          WP_ALLOW_FAKE_RISK: "low,medium"
+          CATWIKI_COMMISSION_RATE: "0.125"
+          CATWIKI_COMMISSION_VAT: "0.21"
+        run: |
+          python wallapop_scanner.py
