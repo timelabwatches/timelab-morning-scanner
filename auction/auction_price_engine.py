@@ -134,95 +134,166 @@ MODEL_ALIASES = {
     },
 }
 
+# ── BRAND_FAMILY_FALLBACKS ──────────────────────────────────────────────────
+# Calibrated with TIMELAB Q1 2026 real Catawiki sales + market research Apr 2026.
+# Format: (p25, p50, p75) — Catawiki hammer prices EUR
+# Last updated: 2026-04-15
 BRAND_FAMILY_FALLBACKS = {
     "omega": {
-        "geneve": (500.0, 700.0, 900.0),
-        "de ville": (600.0, 800.0, 1000.0),
-        "constellation": (1200.0, 1900.0, 2600.0),
-        "seamaster": (700.0, 1000.0, 1400.0),
-        "vintage automatic": (500.0, 850.0, 1200.0),
-        "chronograph": (1200.0, 1800.0, 2600.0),
-        "brand_fallback": (500.0, 900.0, 1600.0),
+        # Q1: De Ville quartz €370 (1 sale). Vintage auto worth more.
+        "geneve":           (320.0, 480.0, 680.0),
+        "de ville":         (320.0, 480.0, 680.0),
+        # Q1: Constellation vintage €270-500 range (market data)
+        "constellation":    (280.0, 420.0, 580.0),
+        # Market: VTG Seamaster €550-850 Catawiki
+        "seamaster":        (520.0, 700.0, 900.0),
+        # Modern Aqua Terra: €1400-2000
+        "aqua terra":       (1300.0, 1700.0, 2100.0),
+        # Modern Speedmaster: strong collector market
+        "speedmaster":      (1800.0, 2600.0, 3500.0),
+        "chronograph":      (900.0, 1400.0, 2000.0),
+        "brand_fallback":   (350.0, 600.0, 900.0),
     },
     "longines": {
-        "hydroconquest": (900.0, 1200.0, 1600.0),
-        "conquest": (450.0, 650.0, 900.0),
-        "flagship": (450.0, 620.0, 780.0),
-        "presence": (350.0, 500.0, 650.0),
-        "chronograph": (650.0, 900.0, 1200.0),
-        "brand_fallback": (350.0, 550.0, 850.0),
+        # Q1: Flagship €890, 22AS €505 (real sales). Generic vtg €180-400.
+        "flagship":         (450.0, 680.0, 900.0),
+        "hydroconquest":    (700.0, 950.0, 1250.0),
+        # Q1: Conquest vtg €320-480 Catawiki market
+        "conquest":         (320.0, 450.0, 620.0),
+        "master collection":(700.0, 850.0, 1050.0),
+        "presence":         (200.0, 320.0, 450.0),
+        "admiral":          (350.0, 500.0, 680.0),
+        "chronograph":      (450.0, 650.0, 900.0),
+        "brand_fallback":   (220.0, 380.0, 580.0),
     },
     "tissot": {
-        "prx": (300.0, 500.0, 700.0),
-        "seastar": (300.0, 450.0, 650.0),
-        "le locle": (260.0, 360.0, 480.0),
-        "visodate": (250.0, 330.0, 420.0),
-        "t-race": (180.0, 280.0, 380.0),
-        "carson": (150.0, 220.0, 300.0),
-        "tradition": (160.0, 250.0, 340.0),
-        "pr 100": (120.0, 180.0, 260.0),
-        "chronograph": (180.0, 280.0, 380.0),
-        "brand_fallback": (120.0, 220.0, 340.0),
+        # Q1: 24 real sales avg €209. PRX PM80 €580, Seastar PM80 €700, T-Lord €494
+        "prx":              (430.0, 580.0, 720.0),
+        "seastar":          (560.0, 700.0, 850.0),
+        "le locle":         (220.0, 320.0, 430.0),
+        "visodate":         (200.0, 290.0, 380.0),
+        "t-race":           (150.0, 230.0, 320.0),
+        "carson":           (150.0, 220.0, 300.0),
+        "tradition":        (160.0, 240.0, 330.0),
+        "pr 100":           (80.0,  160.0, 240.0),
+        # Q1 chrono avg €200 (24 sales, incl. XL, PRS, Quickster)
+        "chronograph":      (140.0, 210.0, 290.0),
+        "brand_fallback":   (100.0, 200.0, 320.0),
     },
     "seiko": {
-        "prospex": (260.0, 400.0, 560.0),
-        "presage": (250.0, 360.0, 500.0),
-        "5 sports": (110.0, 180.0, 260.0),
-        "sportura": (90.0, 140.0, 220.0),
-        "arctura": (90.0, 130.0, 200.0),
-        "kinetic diver": (140.0, 210.0, 300.0),
-        "diver": (180.0, 320.0, 470.0),
-        "chronograph": (100.0, 180.0, 280.0),
-        "brand_fallback": (90.0, 180.0, 300.0),
+        # Q1: Prospex Solar €420, Presage €320-340, Sports chrono €340
+        "prospex":          (250.0, 400.0, 560.0),
+        "presage":          (240.0, 340.0, 480.0),
+        "5 sports":         (90.0,  160.0, 240.0),
+        "sportura":         (80.0,  130.0, 200.0),
+        "arctura":          (80.0,  120.0, 180.0),
+        "kinetic diver":    (120.0, 190.0, 270.0),
+        "diver":            (160.0, 300.0, 450.0),
+        # Q1: generic Seiko chrono avg €190 (7T42, 7T92 etc.)
+        "chronograph":      (120.0, 195.0, 280.0),
+        "brand_fallback":   (80.0,  160.0, 260.0),
     },
     "tagheuer": {
-        "formula 1": (650.0, 820.0, 1000.0),
-        "aquaracer": (1000.0, 1400.0, 1800.0),
-        "link": (700.0, 1000.0, 1300.0),
-        "carrera": (1800.0, 2400.0, 3200.0),
-        "monaco": (3500.0, 4700.0, 5800.0),
-        "chronograph": (1000.0, 1500.0, 2500.0),
-        "brand_fallback": (650.0, 1100.0, 1800.0),
+        # Market: Formula 1 auto €700-950, Aquaracer €750-1050
+        "formula 1":        (580.0, 780.0, 980.0),
+        "aquaracer":        (680.0, 900.0, 1100.0),
+        "link":             (600.0, 850.0, 1100.0),
+        "carrera":          (1400.0, 1900.0, 2600.0),
+        "monaco":           (3000.0, 4200.0, 5500.0),
+        "chronograph":      (800.0, 1200.0, 1800.0),
+        "brand_fallback":   (550.0, 900.0, 1400.0),
     },
     "hamilton": {
-        "khaki field": (400.0, 600.0, 850.0),
-        "khaki navy": (500.0, 680.0, 850.0),
-        "jazzmaster": (520.0, 740.0, 950.0),
-        "ventura": (650.0, 820.0, 1000.0),
-        "chronograph": (550.0, 780.0, 1000.0),
-        "brand_fallback": (350.0, 600.0, 850.0),
+        # Q1: Khaki Field €460 Catawiki, Regatta vtg €760 (exceptional), Jazzline €263
+        "khaki field":      (340.0, 460.0, 600.0),
+        "khaki navy":       (420.0, 580.0, 780.0),
+        "khaki regatta":    (450.0, 620.0, 820.0),
+        "jazzmaster":       (220.0, 340.0, 480.0),
+        "ventura":          (580.0, 760.0, 950.0),
+        "murph":            (680.0, 850.0, 1020.0),
+        "chronograph":      (420.0, 600.0, 800.0),
+        "brand_fallback":   (220.0, 380.0, 580.0),
     },
     "citizen": {
-        "promaster": (220.0, 320.0, 420.0),
-        "eco-drive": (160.0, 230.0, 310.0),
-        "tsuyosa": (280.0, 360.0, 440.0),
-        "diver": (220.0, 310.0, 400.0),
-        "chronograph": (180.0, 240.0, 320.0),
-        "brand_fallback": (120.0, 220.0, 340.0),
+        "promaster":        (200.0, 300.0, 400.0),
+        "eco-drive":        (120.0, 190.0, 270.0),
+        "tsuyosa":          (240.0, 320.0, 410.0),
+        "diver":            (200.0, 290.0, 380.0),
+        "chronograph":      (140.0, 210.0, 290.0),
+        "brand_fallback":   (100.0, 190.0, 300.0),
     },
     "baume": {
-        "classima": (850.0, 1100.0, 1300.0),
-        "riviera": (1400.0, 1800.0, 2200.0),
-        "clifton": (1700.0, 2200.0, 2600.0),
-        "chronograph": (1200.0, 1700.0, 2300.0),
-        "brand_fallback": (800.0, 1300.0, 2000.0),
+        # Q1: Classima €400/€625, avg €512 (2 real sales)
+        "classima":         (400.0, 540.0, 700.0),
+        "riviera":          (1200.0, 1600.0, 2000.0),
+        "clifton":          (1400.0, 1850.0, 2300.0),
+        "chronograph":      (1000.0, 1400.0, 1900.0),
+        "brand_fallback":   (400.0, 700.0, 1100.0),
     },
     "certina": {
-        "ds action": (450.0, 600.0, 780.0),
-        "ds podium": (240.0, 340.0, 430.0),
-        "ds-1": (260.0, 360.0, 470.0),
-        "ds-2": (220.0, 320.0, 410.0),
-        "ds": (180.0, 300.0, 420.0),
-        "chronograph": (240.0, 340.0, 450.0),
-        "brand_fallback": (180.0, 300.0, 430.0),
+        # Q1: DS First €266, Vintage €113 (real sales)
+        "ds action":        (380.0, 520.0, 680.0),
+        "ds podium":        (200.0, 290.0, 380.0),
+        "ds-1":             (220.0, 320.0, 420.0),
+        "ds-2":             (180.0, 270.0, 360.0),
+        "ds":               (160.0, 260.0, 370.0),
+        "chronograph":      (200.0, 300.0, 400.0),
+        "brand_fallback":   (150.0, 260.0, 380.0),
     },
     "bulova": {
-        "marine star": (180.0, 250.0, 330.0),
-        "lunar pilot": (350.0, 430.0, 520.0),
-        "precisionist": (280.0, 360.0, 450.0),
-        "classic": (140.0, 210.0, 280.0),
-        "chronograph": (180.0, 280.0, 380.0),
-        "brand_fallback": (140.0, 240.0, 360.0),
+        "marine star":      (160.0, 230.0, 310.0),
+        "lunar pilot":      (320.0, 410.0, 500.0),
+        "precisionist":     (240.0, 320.0, 410.0),
+        "classic":          (120.0, 190.0, 260.0),
+        "chronograph":      (160.0, 250.0, 340.0),
+        "brand_fallback":   (120.0, 210.0, 320.0),
+    },
+    "zenith": {
+        # Q1: 4 real sales €175-360, avg €270. Was wildly overpriced at p50=720.
+        "el primero":       (900.0, 1400.0, 2000.0),
+        "pilot":            (700.0, 1000.0, 1400.0),
+        "chronograph":      (500.0, 800.0, 1200.0),
+        "brand_fallback":   (200.0, 300.0, 420.0),
+    },
+    "junghans": {
+        # Q1: Max Bill €510 (1 real sale)
+        "max bill":         (380.0, 540.0, 720.0),
+        "meister":          (300.0, 420.0, 580.0),
+        "chronograph":      (280.0, 420.0, 580.0),
+        "brand_fallback":   (250.0, 380.0, 540.0),
+    },
+    "oris": {
+        # Q1: Vintage Oris €261 (1 real sale). Modern BCPD/Aquis higher.
+        "big crown":        (320.0, 460.0, 620.0),
+        "bcpd":             (450.0, 600.0, 780.0),
+        "aquis":            (550.0, 720.0, 920.0),
+        "divers":           (450.0, 620.0, 820.0),
+        "chronograph":      (400.0, 580.0, 780.0),
+        "brand_fallback":   (230.0, 350.0, 500.0),
+    },
+    "breitling": {
+        # Market: Colt Auto €850-1050 Catawiki, Navitimer vtg €800-2000
+        "navitimer":        (800.0, 1200.0, 1800.0),
+        "colt":             (750.0, 980.0, 1250.0),
+        "superocean":       (900.0, 1300.0, 1800.0),
+        "avenger":          (900.0, 1350.0, 1900.0),
+        "chronograph":      (900.0, 1500.0, 2200.0),
+        "brand_fallback":   (700.0, 1100.0, 1700.0),
+    },
+    "tudor": {
+        # Market: BB41 €2000, BB58 €2100 Catawiki
+        "black bay":        (1600.0, 2000.0, 2600.0),
+        "pelagos":          (1800.0, 2400.0, 3200.0),
+        "ranger":           (900.0, 1200.0, 1600.0),
+        "brand_fallback":   (900.0, 1400.0, 2000.0),
+    },
+    "iwc": {
+        # Market: Pilot/Flieger €700-1300 Catawiki
+        "pilot":            (620.0, 900.0, 1200.0),
+        "flieger":          (620.0, 900.0, 1200.0),
+        "aquatimer":        (700.0, 1000.0, 1400.0),
+        "chronograph":      (900.0, 1400.0, 2000.0),
+        "brand_fallback":   (600.0, 950.0, 1400.0),
     },
 }
 

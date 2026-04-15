@@ -59,7 +59,7 @@ jobs:
           DETAIL_FETCH_N: "35"
           EBAY_DETAIL_THROTTLE_S: "0.20"
           TG_MAX_LEN: "3500"
-          COOLDOWN_HOURS: "72"
+          COOLDOWN_HOURS: "48"
           PRICE_DROP_REPOST: "0.10"
           TARGET_LIST_PATH: "target_list.json"
           MODEL_MASTER_PATH: "data/model_master.json"
@@ -73,14 +73,12 @@ jobs:
         if: always()
         run: |
           set -e
-          if [ -f "state_ebay.json" ]; then
-            git config user.name "timelab-bot"
-            git config user.email "timelab-bot@users.noreply.github.com"
-            git add state/state_ebay.json || true
-            if ! git diff --cached --quiet; then
-              git commit -m "Update eBay state [main.py]" || true
-              git push || true
-            fi
+          git config user.name "timelab-bot"
+          git config user.email "timelab-bot@users.noreply.github.com"
+          git add state/state_ebay.json || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Update eBay state [main.py]" || true
+            git push || true
           fi
 
   # ─────────────────────────────────────────────
