@@ -7,14 +7,15 @@ CFG = SiteConfig(
     shop_label="Locotoo",
     base_url="https://locotoo.com",
     catalog_urls=[
-        # Locotoo's catalog. The exact /shop URL needs verification on first run.
-        # If they have a "relojes" category, swap this for the category URL.
-        "https://locotoo.com/shop?category=relojes",
-        "https://locotoo.com/shop",
+        # Locotoo: products live at /shop/product/<category-slug>/<sku>
+        # Need a real category URL — try common slugs:
+        "https://locotoo.com/shop/category/relojes",
+        "https://locotoo.com/shop/category/relojes-de-alta-gama",
+        "https://locotoo.com/shop/category/joyeria-y-relojes",
     ],
-    # Locotoo product URLs: needs first-run inspection to confirm the pattern.
-    # Common Wix/custom: /product/<slug> or /shop/<slug>
-    product_link_pattern=r"/(product|producto|shop)/[a-z0-9-]+/?",
+    # Locotoo product URLs: /shop/product/<category-slug>/<sku>
+    # E.g. /shop/product/reloj-pulsera-2434/e0498273hg-1919074
+    product_link_pattern=r"/shop/product/[^/?#]+/[^/?#]+",
     product_url_prefix="https://locotoo.com",
     paginate=True,
     max_pages=10,

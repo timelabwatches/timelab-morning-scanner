@@ -11,7 +11,10 @@ CFG = SiteConfig(
     ],
     # RealCash uses WooCommerce: product URLs are /producto/<slug>/ or /relojes/<slug>/
     # We use a permissive pattern and rely on canonical filtering downstream
-    product_link_pattern=r"/(producto|relojes|reloj)/[a-z0-9-]+/?$",
+    # RealCash WP custom permalinks: products live at root with a "reloj-" prefix.
+    # E.g.: /reloj-automatico-seiko-5-sports-srpd51k1-negro/
+    # Requiring "/reloj-" prefix excludes other categories (iPhones, etc.)
+    product_link_pattern=r"/reloj(?:es)?-[a-z0-9-]{8,}/?$",
     product_url_prefix="https://realcash.es",
     paginate=True,
     max_pages=20,  # 1043 watches in catalog → 20 pages × 36 = 720 items max

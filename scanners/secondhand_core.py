@@ -526,6 +526,9 @@ def format_alert_card(idx: int, listing: Listing, target: Dict[str, Any],
     }
 
     title_clean = listing.title.title()[:80]
+    raw_p50 = float(target.get("catawiki_estimate", {}).get("p50") or 0)
+    target_id = target.get("id", "?")
+
     lines = [
         "──────────────────────────",
         f"{idx}) {roi_emoji} {bucket}  ·  {shop_label}",
@@ -535,6 +538,7 @@ def format_alert_card(idx: int, listing: Listing, target: Dict[str, Any],
         f"🎯 Catawiki: ~*{close_est:.0f}€*  ·  +{net:.0f}€ neto  ·  {roi_emoji} {roi_pct:.0f}% ROI",
         "",
         f"{MOV_LABEL.get(movement, '❓')}  ·  {COND_EMOJI.get(listing.cond, '❔')} {listing.cond.title()}",
+        f"🎯 Target: `{target_id}` (p50 raw {raw_p50:.0f}€)",
         f"🔗 {listing.url}",
     ]
     return "\n".join(lines)
@@ -604,6 +608,15 @@ def run_scan(cfg: SiteConfig, targets_path: str = "target_list.json",
         close_est = estimate_close(target)
         if close_est <= 0: continue
         net, roi = compute_net_profit(listing.price_eur, close_est)
+
+        # Sanity check: ROI > 500% is almost always a target mismatch, not a real find.
+        # Log it loudly to help diagnose target_list issues.
+        if roi > 5.0:
+            log.warning(
+                f"⚠️  Suspicious ROI {roi*100:.0f}% — target={target.get('id')} "
+                f"p50={target.get('catawiki_estimate',{}).get('p50')} "
+                f"buy={listing.price_eur} title='{listing.title[:50]}'"
+            )
 
         # Gate
         max_buy = float(target.get("max_buy_eur") or max_buy_eur_default)
