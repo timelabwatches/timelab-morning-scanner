@@ -1,0 +1,113 @@
+name: timelab-secondhand-scanners
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 09:30 UTC = 10:30 / 11:30 Madrid (depending on DST)
+    - cron: "30 9 * * *"
+
+jobs:
+  bilbotruke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests beautifulsoup4 lxml
+      - name: Run Bilbotruke scan
+        env:
+          TELEGRAM_BOT_TOKEN:        ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:          ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_BILBOTRUKE: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TARGET_LIST_PATH:          "../target_list.json"
+          MIN_NET_EUR:               "30"
+          MIN_ROI:                   "0.10"
+          MAX_ITEMS:                 "250"
+          FETCH_SLEEP_S:             "1.0"
+          COOLDOWN_HOURS:            "48"
+        run: |
+          cd scanners 2>/dev/null || true
+          python bilbotruke_scanner.py
+      - name: Commit Bilbotruke state
+        if: always()
+        run: |
+          set -e
+          git config user.name "timelab-bot"
+          git config user.email "timelab-bot@users.noreply.github.com"
+          git add state/state_bilbotruke.json scanners/state_bilbotruke.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Bilbotruke state" || true
+            git push || true
+          fi
+
+  realcash:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests beautifulsoup4 lxml
+      - name: Run RealCash scan
+        env:
+          TELEGRAM_BOT_TOKEN:      ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:        ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_REALCASH: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TARGET_LIST_PATH:        "../target_list.json"
+          MIN_NET_EUR:             "30"
+          MIN_ROI:                 "0.10"
+          MAX_ITEMS:               "400"
+          FETCH_SLEEP_S:           "1.0"
+          COOLDOWN_HOURS:          "48"
+        run: |
+          cd scanners 2>/dev/null || true
+          python realcash_scanner.py
+      - name: Commit RealCash state
+        if: always()
+        run: |
+          set -e
+          git config user.name "timelab-bot"
+          git config user.email "timelab-bot@users.noreply.github.com"
+          git add state/state_realcash.json scanners/state_realcash.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Update RealCash state" || true
+            git push || true
+          fi
+
+  locotoo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests beautifulsoup4 lxml
+      - name: Run Locotoo scan
+        env:
+          TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_LOCOTOO: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TARGET_LIST_PATH:       "../target_list.json"
+          MIN_NET_EUR:            "30"
+          MIN_ROI:                "0.10"
+          MAX_ITEMS:              "200"
+          FETCH_SLEEP_S:          "1.0"
+          COOLDOWN_HOURS:         "48"
+        run: |
+          cd scanners 2>/dev/null || true
+          python locotoo_scanner.py
+      - name: Commit Locotoo state
+        if: always()
+        run: |
+          set -e
+          git config user.name "timelab-bot"
+          git config user.email "timelab-bot@users.noreply.github.com"
+          git add state/state_locotoo.json scanners/state_locotoo.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Locotoo state" || true
+            git push || true
+          fi
