@@ -117,3 +117,60 @@ jobs:
           CC_DEBUG: "1"
         run: |
           python cashconverters_scanner.py
+
+  # ─────────────────────────────────────────────
+  # JOB 3 — Vinted scanner
+  # Same schedule as eBay/CC. Separate Telegram channel.
+  # ─────────────────────────────────────────────
+  run-vinted-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run Vinted scanner
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN_VINTED: ${{ secrets.TELEGRAM_BOT_TOKEN_VINTED }}
+          TELEGRAM_BOT_TOKEN:        ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID_VINTED:   ${{ secrets.TELEGRAM_CHAT_ID_VINTED }}
+          TELEGRAM_CHAT_ID:          ${{ secrets.TELEGRAM_CHAT_ID }}
+          VT_MAX_ITEMS_PER_QUERY:    "60"
+          VT_PAGES_PER_QUERY:        "3"
+          VT_THROTTLE_S:             "1.2"
+          VT_TIMEOUT:                "20"
+          VT_MIN_MATCH_SCORE:        "55"
+          VT_MIN_NET_EUR:            "30"
+          VT_MIN_NET_ROI:            "0.15"
+          VT_CLOSE_HAIRCUT:          "0.85"
+          VT_COOLDOWN_HOURS:         "48"
+          VT_DEBUG:                  "1"
+          CATWIKI_COMMISSION_RATE:   "0.125"
+          CATWIKI_COMMISSION_VAT:    "0.21"
+          SHIP_ARB_EUR:              "35"
+        run: |
+          python vinted_scanner.py
+
+      - name: Commit Vinted state
+        if: always()
+        run: |
+          set -e
+          git config user.name "timelab-bot"
+          git config user.email "timelab-bot@users.noreply.github.com"
+          git add state/state_vinted.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Vinted scanner state [skip ci]"
+            git pull --rebase origin main || true
+            git push origin main || true
+          fi
