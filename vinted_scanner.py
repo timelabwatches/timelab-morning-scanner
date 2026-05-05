@@ -895,7 +895,11 @@ def run() -> None:
     #   - is_clean → keep with positive vision tag
     #   - was_skipped → no API key/photo/etc; behave as if vision didn't run
     vision_diag = {"analyzed": 0, "ok": 0, "uncertain": 0, "blocked": 0, "skipped": 0}
-    for c in top:
+    for i, c in enumerate(top):
+        # Pace requests to stay well under Gemini Free tier 15 RPM. Adds up to
+        # ~2s × N candidates of latency — acceptable for the daily scan.
+        if i > 0:
+            time.sleep(2.0)
         li = c["listing"]; t = c["target"]
         verdict = analyze_listing_photo(
             photo_url=li.photo_url,
@@ -903,6 +907,7 @@ def run() -> None:
             target_id=t.get("id", ""),
             model_hint=t.get("family", ""),
             title=li.title,
+            source="Vinted",
         )
         c["vision"] = verdict
         vision_diag["analyzed"] += 1
