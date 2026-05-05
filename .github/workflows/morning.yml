@@ -146,6 +146,7 @@ jobs:
           TELEGRAM_BOT_TOKEN:        ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID_VINTED:   ${{ secrets.TELEGRAM_CHAT_ID_VINTED }}
           TELEGRAM_CHAT_ID:          ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY:            ${{ secrets.GEMINI_API_KEY }}
           VT_MAX_ITEMS_PER_QUERY:    "60"
           VT_PAGES_PER_QUERY:        "3"
           VT_THROTTLE_S:             "1.2"
