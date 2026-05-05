@@ -31,7 +31,11 @@ import logging
 import sys
 
 from .comparables_engine import estimate_hammer_catawiki
-from .enrichers import infer_model_family, infer_mechanism_from_refs
+from .enrichers import (
+    infer_model_family,
+    infer_mechanism_from_refs,
+    infer_mechanism_from_family,
+)
 
 
 # Self-configured logger so SHADOW lines reach stdout even when the host
@@ -107,6 +111,7 @@ def shadow_compare(record: dict) -> dict:
         # Translate movement
         mvh = (record.get("movement_hint") or "").lower().strip()
         mech = _MOVEMENT_MAP.get(mvh)
+        mech_source = "analyzer" if mech else None
 
         # Chrono flag from watch_type
         watch_type = (record.get("watch_type") or "").lower()
@@ -121,9 +126,19 @@ def shadow_compare(record: dict) -> dict:
         text_for_family = _build_text_for_family(record, brand, model)
         family = infer_model_family(brand, text_for_family)
 
-        # Upgrade unknown mech via ref lookup
+        # Fallback chain for mechanism — only fires if previous didn't resolve.
+        # 1) ref-based (e.g. "7S26" → Automático)
         if not mech and refs:
-            mech = infer_mechanism_from_refs(refs, brand_hint=brand)
+            ref_mech = infer_mechanism_from_refs(refs, brand_hint=brand)
+            if ref_mech:
+                mech = ref_mech
+                mech_source = "refs"
+        # 2) family-based (data-driven first, then industry canonical)
+        if not mech and family:
+            fam_mech, fam_src = infer_mechanism_from_family(brand, family)
+            if fam_mech:
+                mech = fam_mech
+                mech_source = f"family:{fam_src}"
 
         new = estimate_hammer_catawiki(
             brand=brand,
@@ -136,6 +151,7 @@ def shadow_compare(record: dict) -> dict:
 
         # Compose log line
         item_id = record.get("listing_id") or record.get("id") or record.get("url") or "?"
+        mech_label = f"{mech}({mech_source})" if mech else "None"
         old = record.get("expected_hammer")
         if old is not None and new.get("expected_hammer") is not None:
             diff = new["expected_hammer"] - old
@@ -144,7 +160,7 @@ def shadow_compare(record: dict) -> dict:
                 "[SHADOW] item=%s brand=%s mech=%s chrono=%s family=%s | "
                 "old=%.0f€ new=%.0f€ diff=%+.0f€ (%+.1f%%) | "
                 "L%s n=%d conf=%s bucket=%s",
-                item_id, brand, mech, is_chrono, family,
+                item_id, brand, mech_label, is_chrono, family,
                 old, new["expected_hammer"], diff, pct,
                 new.get("level_used"), new.get("n", 0),
                 new.get("confidence"), new.get("source_bucket"),
@@ -153,7 +169,7 @@ def shadow_compare(record: dict) -> dict:
             logger.info(
                 "[SHADOW] item=%s brand=%s mech=%s chrono=%s family=%s | "
                 "old=NONE new=%.0f€ | L%s n=%d conf=%s bucket=%s",
-                item_id, brand, mech, is_chrono, family,
+                item_id, brand, mech_label, is_chrono, family,
                 new["expected_hammer"],
                 new.get("level_used"), new.get("n", 0),
                 new.get("confidence"), new.get("source_bucket"),
@@ -162,7 +178,7 @@ def shadow_compare(record: dict) -> dict:
             logger.info(
                 "[SHADOW] item=%s brand=%s mech=%s chrono=%s family=%s | "
                 "old=%s new=NONE reason=%s",
-                item_id, brand, mech, is_chrono, family,
+                item_id, brand, mech_label, is_chrono, family,
                 f"{old:.0f}€" if old is not None else "NONE",
                 new.get("reason"),
             )
