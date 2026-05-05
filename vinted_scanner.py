@@ -68,6 +68,10 @@ VT_TIMEOUT             = env_int("VT_TIMEOUT",             20)
 VT_MIN_MATCH_SCORE     = env_int("VT_MIN_MATCH_SCORE",     55)
 VT_MIN_NET_EUR         = env_float("VT_MIN_NET_EUR",       30.0)
 VT_MIN_NET_ROI         = env_float("VT_MIN_NET_ROI",       0.15)
+# Sanity cap: legitimate Vinted arbitrage rarely exceeds ~150-200% ROI.
+# ROI above this is almost always a false positive: replica, stolen item,
+# title misleading (parts-only sold), or wrong target match. Reject these.
+VT_ROI_SANITY_MAX      = env_float("VT_ROI_SANITY_MAX",    3.0)
 VT_CLOSE_HAIRCUT       = env_float("VT_CLOSE_HAIRCUT",     0.85)
 VT_COOLDOWN_HOURS      = env_int("VT_COOLDOWN_HOURS",      48)
 VT_DEBUG               = env_int("VT_DEBUG",               1)
@@ -195,6 +199,27 @@ BAD_CONDITION_TERMS = [
     "estropeado", "roto", "rota", "averia", "avería",
     "se vende sin", "incompleto", "falta",
 ]
+
+# Tokens that, if they are the FIRST word of the title, indicate the listing
+# is selling watch PARTS, not the watch itself. Caught a "Caja reloj Tissot"
+# false positive in the v1 run where the seller listed just the empty box.
+PARTS_ONLY_FIRST_TOKENS = {
+    "caja",       # case
+    "estuche",    # case/box
+    "correa",     # strap
+    "cristal",    # crystal
+    "esfera",     # dial alone
+    "máquina",    # movement alone
+    "maquina",
+    "movimiento",
+    "manecillas", # hands
+    "agujas",
+    "armis",      # bracelet
+    "pulsera",    # bracelet (when first word, usually means just the bracelet)
+    "dial",
+    "bisel",      # bezel
+    "corona",     # crown
+}
 
 
 # ─────────────────────────────────────────────
@@ -393,9 +418,19 @@ def reject_reason(li: VintedListing) -> Optional[str]:
     if bt in BANNED_BRANDS:
         return f"banned_brand:{bt}"
 
-    # Path must include "relojes" — Vinted lets users miscategorize
-    if li.path and "reloj" not in canon(li.path):
-        return f"wrong_path:{li.path[:40]}"
+    # NOTE: previously also filtered by `path`, but the Vinted API field shape
+    # we assumed (string with "/") doesn't match what the catalog endpoint
+    # returns, so 84% of valid candidates were being killed. Since we already
+    # filter by `catalog_ids=304` in the search params, every returned item
+    # is in the Watches category by definition. Path filter removed.
+
+    # Parts-only listings: title's FIRST word indicates this is a strap, box,
+    # crown, etc. — not the full watch. Title-anywhere check is too aggressive
+    # ("Tissot Seastar con caja original" should pass). Only reject when the
+    # parts noun OPENS the title.
+    first_token = canon(li.title).split()[0] if li.title else ""
+    if first_token in PARTS_ONLY_FIRST_TOKENS:
+        return f"parts_only:{first_token}"
 
     # Title noise (vitamins, perfumes, kid toys, etc)
     if has_any(li.title, NOISE_TITLE_TOKENS):
@@ -598,11 +633,11 @@ def run() -> None:
         "queries": 0, "collected": 0, "scanned": 0,
         "passed_match": 0, "passed_econ": 0,
         "rejected": {
-            "junk_brand_title": 0, "wrong_path": 0, "noise_title": 0,
+            "junk_brand_title": 0, "parts_only": 0, "noise_title": 0,
             "bad_condition": 0, "price_too_low": 0, "price_too_high": 0,
             "banned_brand": 0, "no_brand": 0, "no_target_match": 0,
             "below_match_threshold": 0, "below_econ_threshold": 0,
-            "cooldown": 0,
+            "roi_too_good": 0, "cooldown": 0,
         },
     }
     candidates: List[Dict[str, Any]] = []
@@ -653,6 +688,14 @@ def run() -> None:
             net, roi = estimate_net(li.price_eur, close_est)
             if net < VT_MIN_NET_EUR or roi < VT_MIN_NET_ROI:
                 diag["rejected"]["below_econ_threshold"] += 1
+                continue
+
+            # Sanity guardrail: ROI implausibly high → almost always a false
+            # positive (replica, stolen, parts-only listing the parts filter
+            # missed, target mismatch). Real Vinted arbitrage rarely exceeds
+            # 150-200% ROI. Reject anything above VT_ROI_SANITY_MAX (default 3.0).
+            if roi > VT_ROI_SANITY_MAX:
+                diag["rejected"]["roi_too_good"] += 1
                 continue
 
             # Max buy price safety
