@@ -48,7 +48,9 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 
 GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL      = os.environ.get("VT_VISION_MODEL", "gemini-2.0-flash")
+# Default to Gemini Flash-Lite (cheapest reliable Vision model on Google's
+# tier as of May 2026). Override via VT_VISION_MODEL env var if needed.
+GEMINI_MODEL      = os.environ.get("VT_VISION_MODEL", "gemini-flash-lite-latest")
 VT_VISION_ENABLED = os.environ.get("VT_VISION_ENABLED", "1") == "1"
 VT_VISION_TIMEOUT = int(os.environ.get("VT_VISION_TIMEOUT", "15"))
 
@@ -235,27 +237,41 @@ def analyze_listing_photo(
         },
     }
 
-    try:
-        r = requests.post(
-            GEMINI_ENDPOINT,
-            params={"key": GEMINI_API_KEY},
-            json=payload,
-            timeout=VT_VISION_TIMEOUT,
-            headers={"Content-Type": "application/json"},
-        )
-    except requests.Timeout:
-        logger.warning("[VISION] gemini timeout")
-        return VisionVerdict(verdict="skip", error="timeout")
-    except Exception as e:
-        logger.warning("[VISION] gemini request error: %s", e)
-        return VisionVerdict(verdict="skip", error=f"request_error:{type(e).__name__}")
+    # Up to 1 retry on 429 with backoff. The free tier of Gemini can be a
+    # bit volatile when bursts of multimodal requests come too fast.
+    _max_attempts = 2
+    for attempt in range(1, _max_attempts + 1):
+        try:
+            r = requests.post(
+                GEMINI_ENDPOINT,
+                params={"key": GEMINI_API_KEY},
+                json=payload,
+                timeout=VT_VISION_TIMEOUT,
+                headers={"Content-Type": "application/json"},
+            )
+        except requests.Timeout:
+            logger.warning("[VISION] gemini timeout (attempt %d)", attempt)
+            return VisionVerdict(verdict="skip", error="timeout")
+        except Exception as e:
+            logger.warning("[VISION] gemini request error: %s", e)
+            return VisionVerdict(verdict="skip", error=f"request_error:{type(e).__name__}")
 
-    if r.status_code == 429:
-        logger.warning("[VISION] gemini rate-limited (429)")
-        return VisionVerdict(verdict="skip", error="rate_limited")
-    if r.status_code != 200:
-        logger.warning("[VISION] gemini status=%s body=%s", r.status_code, r.text[:200])
-        return VisionVerdict(verdict="skip", error=f"api_status_{r.status_code}")
+        if r.status_code == 429 and attempt < _max_attempts:
+            # Rate-limited: wait and retry once
+            import time as _t
+            wait_s = 8 * attempt
+            logger.warning("[VISION] gemini rate-limited (429), waiting %ds and retrying", wait_s)
+            _t.sleep(wait_s)
+            continue
+
+        if r.status_code == 429:
+            logger.warning("[VISION] gemini rate-limited (429) after retry, giving up")
+            return VisionVerdict(verdict="skip", error="rate_limited")
+        if r.status_code != 200:
+            logger.warning("[VISION] gemini status=%s body=%s", r.status_code, r.text[:200])
+            return VisionVerdict(verdict="skip", error=f"api_status_{r.status_code}")
+        # success
+        break
 
     try:
         data = r.json()
