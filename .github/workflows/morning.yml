@@ -41,6 +41,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+          ATELIER_WEBHOOK_URL: ${{ secrets.ATELIER_WEBHOOK_URL }}
+          ATELIER_TOKEN: ${{ secrets.ATELIER_TOKEN }}
           MIN_NET_EUR: "20"
           MIN_NET_ROI: "0.05"
           MIN_MATCH_SCORE: "45"
@@ -108,6 +110,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ATELIER_WEBHOOK_URL: ${{ secrets.ATELIER_WEBHOOK_URL }}
+          ATELIER_TOKEN: ${{ secrets.ATELIER_TOKEN }}
           CC_MAX_ITEMS: "500"
           CC_TIMEOUT: "20"
           CC_THROTTLE_S: "0.7"
@@ -149,6 +153,8 @@ jobs:
           TELEGRAM_CHAT_ID_VINTED:   ${{ secrets.TELEGRAM_CHAT_ID_VINTED }}
           TELEGRAM_CHAT_ID:          ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY:            ${{ secrets.GEMINI_API_KEY }}
+          ATELIER_WEBHOOK_URL:       ${{ secrets.ATELIER_WEBHOOK_URL }}
+          ATELIER_TOKEN:             ${{ secrets.ATELIER_TOKEN }}
           VT_MAX_ITEMS_PER_QUERY:    "60"
           VT_PAGES_PER_QUERY:        "3"
           VT_THROTTLE_S:             "1.2"
