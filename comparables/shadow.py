@@ -194,62 +194,81 @@ def shadow_compare(record: dict) -> dict:
 
 def apply_comparables_engine(record: dict) -> dict:
     """
-    PHASE 2 — promote the comparables engine to actual decisor.
+    PHASE 2 (refined) — promote the comparables engine to actual decisor.
 
-    Same as shadow_compare, but ALSO writes the new estimate into
-    `record["auction_estimate"]` when the legacy auction_price_engine left
-    it None or missing. This makes downstream profit_engine and
-    decision_engine consume our value.
+    Decision matrix:
+      ┌──────────────────────────┬─────────────────────────────────────────┐
+      │ Situation                │ Action                                  │
+      ├──────────────────────────┼─────────────────────────────────────────┤
+      │ new returns NONE         │ leave record alone (engine has no data) │
+      │ legacy returned NONE     │ promote new value (was silent before)   │
+      │ both have value, conf=H  │ OVERRIDE — trust real-cierre calibration│
+      │ both have value, conf<H  │ defer to legacy (we don't know better)  │
+      └──────────────────────────┴─────────────────────────────────────────┘
 
-    Decision logic:
-      - If old auction_estimate has a valid expected_hammer  → leave it (defer to legacy)
-      - If old returned None and new engine has a value      → promote new value
-      - If both None                                          → leave None (bot rejects, same as before)
+    Rationale for the high-confidence override: when our bucket has n≥8 real
+    cierres, the median is empirically grounded in your historical sales. The
+    legacy engine assigns category defaults from target_stats.json that are
+    much coarser (e.g., 197€ for any Seiko Prospex, when our 18 cierres show
+    p50=145€). At conf=high, prefer the empirical median.
 
-    The promoted dict matches the exact field names the profit_engine reads:
+    The promoted dict matches the field names profit_engine reads:
         expected_hammer, conservative_hammer, optimistic_hammer, raw_expected_hammer
-    Plus audit fields (source, confidence, level_used, n, bucket) so the
-    Telegram alert formatter can show provenance.
+    Plus audit fields: source, confidence, level_used, n, bucket, promote_reason,
+    and legacy_value (preserves the original old_hammer for traceability).
 
     Mutates and returns `record`. Never raises.
     """
     new = shadow_compare(record)
 
+    new_hammer = new.get("expected_hammer")
+    if new_hammer is None:
+        return record  # nothing we can offer
+
     old_estimate = record.get("auction_estimate") or {}
     old_hammer = old_estimate.get("expected_hammer")
+    new_conf = new.get("confidence", "low")
 
-    # Defer to legacy when it produced a value
-    if old_hammer is not None:
-        return record
+    # Decide whether to write our value
+    promote_reason = None
+    if old_hammer is None:
+        promote_reason = "legacy_returned_none"
+    elif new_conf == "high":
+        promote_reason = "high_confidence_override"
 
-    # Nothing to promote
-    if new.get("expected_hammer") is None:
-        return record
+    if promote_reason is None:
+        return record  # defer to legacy
 
-    # Promote
     record["auction_estimate"] = {
-        "expected_hammer":     new["expected_hammer"],
-        "conservative_hammer": new.get("conservative", new["expected_hammer"]),
-        "optimistic_hammer":   new.get("optimistic", new["expected_hammer"]),
-        "raw_expected_hammer": new.get("raw_p50", new["expected_hammer"]),
-        # Audit / provenance — non-functional but useful for downstream logging
-        "source":      "comparables_engine",
-        "confidence":  new.get("confidence"),
-        "level_used":  new.get("level_used"),
-        "n":           new.get("n"),
-        "bucket":      new.get("source_bucket"),
+        "expected_hammer":     new_hammer,
+        "conservative_hammer": new.get("conservative", new_hammer),
+        "optimistic_hammer":   new.get("optimistic", new_hammer),
+        "raw_expected_hammer": new.get("raw_p50", new_hammer),
+        # Audit / provenance
+        "source":         "comparables_engine",
+        "confidence":     new_conf,
+        "level_used":     new.get("level_used"),
+        "n":              new.get("n"),
+        "bucket":         new.get("source_bucket"),
+        "promote_reason": promote_reason,
+        "legacy_value":   old_hammer,    # preserved for traceability (None if was missing)
     }
 
     item_id = record.get("listing_id") or record.get("id") or "?"
-    logger.info(
-        "[COMPARABLES] item=%s PROMOTED expected_hammer=%.0f€ p25=%.0f€ p75=%.0f€ "
-        "conf=%s L%s n=%d",
-        item_id,
-        new["expected_hammer"],
-        new.get("conservative", new["expected_hammer"]),
-        new.get("optimistic", new["expected_hammer"]),
-        new.get("confidence"),
-        new.get("level_used"),
-        new.get("n", 0),
-    )
+    if promote_reason == "high_confidence_override":
+        logger.info(
+            "[COMPARABLES] item=%s OVERRIDE old=%.0f€ → new=%.0f€ "
+            "conf=high L%s n=%d bucket=%s",
+            item_id, old_hammer, new_hammer,
+            new.get("level_used"), new.get("n", 0), new.get("source_bucket"),
+        )
+    else:
+        logger.info(
+            "[COMPARABLES] item=%s PROMOTED expected_hammer=%.0f€ p25=%.0f€ p75=%.0f€ "
+            "conf=%s L%s n=%d (legacy was None)",
+            item_id, new_hammer,
+            new.get("conservative", new_hammer),
+            new.get("optimistic", new_hammer),
+            new_conf, new.get("level_used"), new.get("n", 0),
+        )
     return record
