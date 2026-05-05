@@ -28,9 +28,21 @@ Use:
 from __future__ import annotations
 
 import logging
+import sys
 
 from .comparables_engine import estimate_hammer_catawiki
 from .enrichers import infer_model_family, infer_mechanism_from_refs
+
+
+# Self-configured logger so SHADOW lines reach stdout even when the host
+# script (e.g. main.py) does not call logging.basicConfig().
+logger = logging.getLogger("timelab.shadow")
+if not logger.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(_h)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 
 # Map analyzer's English movement hints → DB Spanish labels
@@ -61,8 +73,6 @@ _BRAND_NORMALIZE = {
     "baume": "Baume & Mercier",
     "baume & mercier": "Baume & Mercier",
 }
-
-logger = logging.getLogger(__name__)
 
 
 def _norm_brand(b: str) -> str:
