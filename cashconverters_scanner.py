@@ -184,6 +184,7 @@ class Listing:
 # ─────────────────────────────────────────────────────────────────────────────
 import base64 as _b64
 import urllib.request as _urlreq
+from clients.atelier_client import send_offers_to_atelier
 
 _VISION_PROMPT = """You are a professional watch authenticator and identifier.
 Analyze this watch listing image and return ONLY valid JSON with these exact keys:
@@ -1756,6 +1757,7 @@ def run() -> None:
             lines.append("")
 
         telegram_send("\n".join(lines).strip())
+        send_offers_to_atelier(top, source="CashConverters")
 
     if CC_DEBUG:
         dbg = []
