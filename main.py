@@ -11,6 +11,7 @@ from clients.ebay_client import (
     search_listings,
 )
 from clients.telegram_client import send_crash_message, send_message
+from gemini_vision import analyze_listing_photo, format_verdict_for_telegram
 from pipeline.adapter_ebay import ebay_listing_to_candidate
 from pipeline.cooldown import (
     is_in_cooldown,
@@ -77,9 +78,13 @@ def format_alerts(
                     f"📍 {alert['location'] or 'Unknown location'}",
                     f"🧾 Condition: {alert['condition'] or 'n/a'} | Category: {alert['category'] or 'n/a'}",
                     f"🔗 {alert['url']}",
-                    "",
                 ]
             )
+            # Vision verdict block (empty when Vision was skipped)
+            vision_block = format_verdict_for_telegram(alert.get("vision")) if alert.get("vision") else ""
+            if vision_block:
+                lines.append(vision_block)
+            lines.append("")
         return "\n".join(lines).strip()
 
     lines.append("❌ No opportunities passed the filters.")
@@ -173,6 +178,9 @@ def main() -> None:
             continue
 
         payload = build_alert_payload(result)
+        # Carry through photo_url and item_id for Vision lookup later
+        payload["photo_url"] = getattr(listing, "photo_url", "") or ""
+        payload["item_id"] = listing.item_id
         raw_candidates.append(payload)
 
         if not passes_decision_gate(result, settings):
@@ -206,6 +214,43 @@ def main() -> None:
     alerts.sort(key=lambda x: (x["net_profit"], x["roi"], x["match_score"]), reverse=True)
     raw_candidates.sort(key=lambda x: (x["net_profit"], x["roi"], x["match_score"]), reverse=True)
 
+    # ─── Vision layer (Gemini Flash-Lite) on top alerts ───
+    # Validates the listing's primary photo before sending the alert. Blocks
+    # parts-only / replicas / wrong-brand. Failures yield 'skip' (no impact).
+    top_alerts = alerts[:10]
+    vision_diag = {"analyzed": 0, "ok": 0, "uncertain": 0, "blocked": 0, "skipped": 0}
+    for vi_idx, vi_alert in enumerate(top_alerts):
+        if vi_idx > 0:
+            time.sleep(2.0)  # pace API requests
+        vi_verdict = analyze_listing_photo(
+            photo_url=vi_alert.get("photo_url", "") or "",
+            brand_hint=vi_alert.get("brand", "") or "",
+            target_id=vi_alert.get("target_id", "") or "",
+            model_hint=vi_alert.get("model", "") or "",
+            title=vi_alert.get("title", "") or "",
+            source="eBay",
+        )
+        vi_alert["vision"] = vi_verdict
+        vision_diag["analyzed"] += 1
+        if vi_verdict.was_skipped:
+            vision_diag["skipped"] += 1
+        elif vi_verdict.is_blocking:
+            vision_diag["blocked"] += 1
+        elif vi_verdict.is_flagged:
+            vision_diag["uncertain"] += 1
+        else:
+            vision_diag["ok"] += 1
+        print(
+            f"[VISION] item={vi_alert.get('item_id', '')} "
+            f"verdict={vi_verdict.verdict} conf={vi_verdict.confidence} "
+            f"flags={vi_verdict.red_flags} err={vi_verdict.error or '-'}",
+            flush=True,
+        )
+
+    # Drop blocking verdicts before sending alerts
+    top_alerts = [a for a in top_alerts if not a.get("vision") or not a["vision"].is_blocking]
+    print(f"[VISION] summary: {vision_diag}", flush=True)
+
     message = format_alerts(
         target_version=meta.get("version", ""),
         targets_count=len(targets),
@@ -213,7 +258,7 @@ def main() -> None:
         cooldown_suppressed=cooldown_suppressed,
         repost_count=repost_count,
         sent_count=sent_count,
-        alerts=alerts[:10],
+        alerts=top_alerts,
         raw_candidates=raw_candidates[:5],
     )
     send_message(settings, message)
