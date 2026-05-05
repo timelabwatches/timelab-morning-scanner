@@ -1061,12 +1061,17 @@ def telegram_send(text: str) -> None:
 # WALLAPOP API CALLS
 # ─────────────────────────────────────────────
 
+# Diagnostic flag: deep-inspect the very first API response of each run.
+# Set to True at module load; flipped to False after first call.
+_WP_DIAG_FIRST_CALL = True
+
 def search_wallapop(
     query: str,
     max_items: int = 50,
     session: Optional[requests.Session] = None,
 ) -> List[WallapopListing]:
     """Search Wallapop's JSON API for a given query."""
+    global _WP_DIAG_FIRST_CALL
     sess = session or requests.Session()
     results: List[WallapopListing] = []
     start = 0
@@ -1089,10 +1094,49 @@ def search_wallapop(
                 params=params,
                 timeout=WP_TIMEOUT,
             )
+
+            # ── DIAGNOSTIC: deep-inspect the first response in the run ──
+            if _WP_DIAG_FIRST_CALL:
+                _WP_DIAG_FIRST_CALL = False
+                print(
+                    f"[WP-DIAG] first_call query='{query}' status={r.status_code} "
+                    f"content_length={len(r.content)} url={r.url[:120]}",
+                    flush=True,
+                )
+                if r.status_code == 200:
+                    try:
+                        _sample = r.json()
+                        if isinstance(_sample, dict):
+                            print(f"[WP-DIAG] top_level_keys={list(_sample.keys())}", flush=True)
+                            _d = _sample.get("data") if isinstance(_sample.get("data"), dict) else {}
+                            _section = _d.get("section") if isinstance(_d.get("section"), dict) else {}
+                            _payload = _section.get("payload") if isinstance(_section.get("payload"), dict) else {}
+                            _items_a = _payload.get("items")
+                            _items_b = _sample.get("items")
+                            print(
+                                f"[WP-DIAG] data.section.payload.items={type(_items_a).__name__} "
+                                f"len={len(_items_a) if isinstance(_items_a, list) else 'N/A'} | "
+                                f"data.items_fallback={type(_items_b).__name__} "
+                                f"len={len(_items_b) if isinstance(_items_b, list) else 'N/A'}",
+                                flush=True,
+                            )
+                            if not (isinstance(_items_a, list) and _items_a) \
+                               and not (isinstance(_items_b, list) and _items_b):
+                                _preview = json.dumps(_sample, ensure_ascii=False)[:500]
+                                print(f"[WP-DIAG] response_preview: {_preview}", flush=True)
+                        else:
+                            print(f"[WP-DIAG] response_root_type={type(_sample).__name__}", flush=True)
+                    except Exception as _je:
+                        print(f"[WP-DIAG] json_parse_failed err={_je} body_excerpt={r.text[:300]!r}", flush=True)
+                else:
+                    print(f"[WP-DIAG] non_200_body_excerpt={r.text[:300]!r}", flush=True)
+
             if r.status_code != 200:
+                print(f"[WP-DIAG] q='{query}' BREAK reason=non_200 status={r.status_code}", flush=True)
                 break
             data = r.json()
-        except Exception:
+        except Exception as e:
+            print(f"[WP-DIAG] q='{query}' BREAK reason=exception type={type(e).__name__} err={e}", flush=True)
             break
 
         search_objects = (
@@ -1104,6 +1148,12 @@ def search_wallapop(
         if not search_objects:
             search_objects = data.get("items", []) or []
         if not search_objects:
+            _top_keys = list(data.keys()) if isinstance(data, dict) else "NOT_DICT"
+            print(
+                f"[WP-DIAG] q='{query}' BREAK reason=no_items_in_known_paths "
+                f"top_keys={_top_keys}",
+                flush=True,
+            )
             break
 
         for item in search_objects:
