@@ -203,23 +203,56 @@ BAD_CONDITION_TERMS = [
 # Tokens that, if they are the FIRST word of the title, indicate the listing
 # is selling watch PARTS, not the watch itself. Caught a "Caja reloj Tissot"
 # false positive in the v1 run where the seller listed just the empty box.
+# Vinted has many ES/IT/FR listings so we cover all three.
 PARTS_ONLY_FIRST_TOKENS = {
-    "caja",       # case
-    "estuche",    # case/box
-    "correa",     # strap
-    "cristal",    # crystal
-    "esfera",     # dial alone
-    "máquina",    # movement alone
-    "maquina",
-    "movimiento",
-    "manecillas", # hands
-    "agujas",
-    "armis",      # bracelet
-    "pulsera",    # bracelet (when first word, usually means just the bracelet)
-    "dial",
-    "bisel",      # bezel
-    "corona",     # crown
+    # Spanish
+    "caja", "estuche", "correa", "cristal", "esfera", "máquina", "maquina",
+    "movimiento", "manecillas", "agujas", "armis", "pulsera", "dial",
+    "bisel", "corona",
+    # Italian (cinturino, cassa, etc.)
+    "cinturino", "cassa", "cassette", "vetro", "quadrante", "lancette",
+    "movimento", "corona",
+    # French
+    "bracelet", "boîte", "boite", "boîtier", "boitier", "verre", "cadran",
+    "aiguilles", "couronne",
 }
+
+# As above but checked anywhere in the FIRST 3 words of the title — covers
+# patterns like "Oris cinturino in caucciù" where the brand name is first
+# but the parts noun comes second. Same multilingual coverage.
+PARTS_ONLY_EARLY_TOKENS = {
+    # Spanish
+    "correa", "esfera", "movimiento", "manecillas",
+    # Italian
+    "cinturino", "cassa", "vetro", "quadrante", "lancette", "movimento",
+    # French
+    "bracelet", "boîte", "boite", "boîtier", "boitier", "verre", "cadran",
+    "aiguilles",
+}
+
+# Premium watch model tokens. When ANY of these appears in a listing title,
+# the watch is identified as a high-tier model. We tighten the ROI sanity:
+# real premium watches don't sell at 70%+ discount on Vinted — that's a fake.
+PREMIUM_MODEL_TOKENS = {
+    # Omega
+    "seamaster 007", "speedmaster", "moonwatch", "speedy", "constellation",
+    # Rolex
+    "submariner", "daytona", "datejust", "gmt-master", "gmt master",
+    "explorer", "yacht-master", "sea-dweller", "milgauss", "presidente",
+    # Patek
+    "nautilus", "aquanaut", "calatrava", "perpetual",
+    # Audemars Piguet
+    "royal oak",
+    # TAG Heuer
+    "carrera", "monaco", "aquaracer",
+    # Tudor
+    "black bay", "pelagos",
+    # Breitling
+    "navitimer", "chronomat", "superocean",
+    # Other premium
+    "el primero", "big bang", "luminor", "vintage rolex",
+}
+PREMIUM_ROI_MAX = 1.5  # 150% — real premium watches don't get 70% off
 
 
 # ─────────────────────────────────────────────
@@ -428,9 +461,18 @@ def reject_reason(li: VintedListing) -> Optional[str]:
     # crown, etc. — not the full watch. Title-anywhere check is too aggressive
     # ("Tissot Seastar con caja original" should pass). Only reject when the
     # parts noun OPENS the title.
-    first_token = canon(li.title).split()[0] if li.title else ""
+    title_words = canon(li.title).split()
+    first_token = title_words[0] if title_words else ""
     if first_token in PARTS_ONLY_FIRST_TOKENS:
         return f"parts_only:{first_token}"
+
+    # Also catch "Brand cinturino" pattern (parts token in early positions).
+    # Multilingual: cinturino (IT), bracelet (FR), correa (ES), etc. Common
+    # when the seller front-loads the brand name to be searchable but is
+    # actually selling just the strap/case/etc.
+    for tok in title_words[1:3]:
+        if tok in PARTS_ONLY_EARLY_TOKENS:
+            return f"parts_only_early:{tok}"
 
     # Title noise (vitamins, perfumes, kid toys, etc)
     if has_any(li.title, NOISE_TITLE_TOKENS):
@@ -656,11 +698,12 @@ def run() -> None:
         "queries": 0, "collected": 0, "scanned": 0,
         "passed_match": 0, "passed_econ": 0,
         "rejected": {
-            "junk_brand_title": 0, "parts_only": 0, "noise_title": 0,
-            "bad_condition": 0, "price_too_low": 0, "price_too_high": 0,
+            "junk_brand_title": 0, "parts_only": 0, "parts_only_early": 0,
+            "noise_title": 0, "bad_condition": 0,
+            "price_too_low": 0, "price_too_high": 0,
             "banned_brand": 0, "no_brand": 0, "no_target_match": 0,
             "below_match_threshold": 0, "below_econ_threshold": 0,
-            "roi_too_good": 0, "cooldown": 0,
+            "roi_too_good": 0, "premium_roi_implausible": 0, "cooldown": 0,
         },
     }
     candidates: List[Dict[str, Any]] = []
@@ -719,6 +762,16 @@ def run() -> None:
             # 150-200% ROI. Reject anything above VT_ROI_SANITY_MAX (default 3.0).
             if roi > VT_ROI_SANITY_MAX:
                 diag["rejected"]["roi_too_good"] += 1
+                continue
+
+            # Tighter sanity for PREMIUM models: real Submariner / Daytona /
+            # Speedmaster / Royal Oak / etc. listings on Vinted at 70%+
+            # discount are virtually always replicas. If the title contains
+            # any premium token, ROI must stay under 150%.
+            title_lower = canon(li.title)
+            has_premium = any(tok in title_lower for tok in PREMIUM_MODEL_TOKENS)
+            if has_premium and roi > PREMIUM_ROI_MAX:
+                diag["rejected"]["premium_roi_implausible"] += 1
                 continue
 
             # Max buy price safety
