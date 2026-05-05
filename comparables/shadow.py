@@ -464,6 +464,112 @@ def apply_comparables_engine_secondhand(
         return legacy_close  # safe fallback — never break the secondhand pipeline
 
 
+def apply_comparables_engine_vinted(
+    legacy_close,
+    listing,
+    target=None,
+    brand_hint=None,
+):
+    """
+    PHASE 2 wrapper for the Vinted scanner.
+
+    Same decision matrix as the eBay / CC / secondhand variants:
+      - new returns NONE                       → keep legacy
+      - legacy is None / 0                     → use new (promote)
+      - both have value AND conf=high          → use new (override)
+      - both have value AND conf < high        → keep legacy
+    Plus the asymmetric downward guardrail (block override when new/old < 0.5)
+    to protect target-curated values from being dragged down by coarse buckets.
+
+    Vinted's Listing schema differs from CC/secondhand:
+      - .item_id (not .sku)
+      - .status (not .cond)
+      - No vision_data (Vinted scanner doesn't run Claude Vision)
+      - No detected_movement (we infer from title text via the engine itself)
+
+    Logs via [SHADOW] (diff legacy vs new) plus [COMPARABLES-VT] action lines.
+    Never raises; on any error returns legacy_close unchanged.
+    """
+    try:
+        title    = getattr(listing, "title", "") or ""
+        raw_text = getattr(listing, "raw_text", "") or ""
+        status   = getattr(listing, "status", "") or ""
+        url      = getattr(listing, "url", "") or ""
+        item_id  = getattr(listing, "item_id", "") or ""
+
+        target = target or {}
+        # Brand: prefer matched target's, then explicit hint
+        brand = (target.get("brand") or brand_hint or "").lower()
+
+        # Chrono detection from title (Vinted has no watch_type field)
+        title_l = title.lower()
+        is_chrono = any(
+            t in title_l for t in ("chrono", "chronograph", "cronograph", "cronograf")
+        )
+
+        # ID for logging — item_id is most stable; fall back to URL tail
+        log_id = item_id or (url.rsplit("/", 1)[-1] if "/" in url else url[:50]) or "?"
+
+        # Build a record dict shaped like what shadow_compare expects
+        record = {
+            "listing_id":    log_id,
+            "brand":         brand,
+            "model":         "",                # Vinted doesn't extract model
+            "reference":     "",                # nor reference
+            "movement_hint": None,              # let engine infer from text
+            "watch_type":    "chronograph" if is_chrono else "",
+            "title":         title,
+            "raw_text":      f"{title} {status} {raw_text}".strip()[:1000],
+            "auction_estimate": (
+                {"expected_hammer": float(legacy_close)}
+                if legacy_close and legacy_close > 0 else {}
+            ),
+        }
+
+        new = shadow_compare(record)
+        new_hammer = new.get("expected_hammer")
+
+        if new_hammer is None:
+            return legacy_close
+
+        new_conf = new.get("confidence", "low")
+
+        # Promote when legacy returned no value
+        if not legacy_close or legacy_close <= 0:
+            logger.info(
+                "[COMPARABLES-VT] item=%s PROMOTED expected_hammer=%.0f€ conf=%s "
+                "L%s n=%d bucket=%s",
+                log_id, new_hammer, new_conf,
+                new.get("level_used"), new.get("n", 0), new.get("source_bucket"),
+            )
+            return new_hammer
+
+        # Override when our confidence is high — but only if not catastrophically lower
+        if new_conf == "high":
+            if _should_block_downward_override(legacy_close, new_hammer):
+                logger.info(
+                    "[COMPARABLES-VT] item=%s SKIP_OVERRIDE_DOWNWARD ratio=%.2f "
+                    "old=%.0f€ new=%.0f€ (legacy preserved)",
+                    log_id, new_hammer / float(legacy_close),
+                    float(legacy_close), new_hammer,
+                )
+                return legacy_close
+            logger.info(
+                "[COMPARABLES-VT] item=%s OVERRIDE old=%.0f€ → new=%.0f€ conf=high "
+                "L%s n=%d bucket=%s",
+                log_id, float(legacy_close), new_hammer,
+                new.get("level_used"), new.get("n", 0), new.get("source_bucket"),
+            )
+            return new_hammer
+
+        # Otherwise defer to the curated target value
+        return legacy_close
+
+    except Exception as e:
+        logger.warning("[COMPARABLES-VT] failed: %s", e, exc_info=False)
+        return legacy_close
+
+
 def apply_comparables_engine(record: dict) -> dict:
     """
     PHASE 2 (refined) — promote the comparables engine to actual decisor.
