@@ -567,6 +567,7 @@ def compute_match_score(li: VintedListing, brand: str, target: Dict[str, Any]) -
         must_exclude = [must_exclude]
 
     text = li.raw_text
+    text_c = canon(text)  # canon'd once for the bonus checks below
 
     # Hard exclude
     if must_exclude and has_any(text, must_exclude):
@@ -583,19 +584,66 @@ def compute_match_score(li: VintedListing, brand: str, target: Dict[str, Any]) -
     real_hits  = keyword_hits(text, real_keywords)
     brand_hits = keyword_hits(text, brand_keywords)
 
-    # CRITICAL GATE: at least one real model keyword must hit. Without this,
-    # the target is just "anything with this brand name", which mass-matches
-    # generic listings to specific premium targets (the false-positive pattern
-    # observed with Maurice Lacroix Aikon catching all M.Lacroix listings).
-    # Exception: if the target has no real keywords (i.e. its must_include is
-    # entirely brand-tokens), accept on brand+condition alone — but those are
-    # weak targets we don't trust as much.
-    if real_keywords and real_hits == 0:
-        return 0, 0
+    # Two flavors of target:
+    #   (a) SPECIFIC: has real model keywords (e.g. ["aikon"]). Require ≥1 hit
+    #       to avoid mass-matching all M.Lacroix listings to the Aikon target.
+    #   (b) GENERIC: must_include is ONLY the brand (or empty). Catches
+    #       vintage/generic listings that don't have model-specific keywords.
+    #       Without a higher base score, these never reach threshold 55.
+    if real_keywords:
+        # SPECIFIC target — require model-level hit
+        if real_hits == 0:
+            return 0, 0
+        score = 30 + min(40, 20 * real_hits) + min(10, 5 * brand_hits)
+    else:
+        # GENERIC target — brand match alone is the signal
+        score = 45 + min(15, 8 * brand_hits)
 
-    # Score: 30 base for brand-and-model match, +20 per real keyword hit
-    # (cap +40), small bonus for brand-keyword hits.
-    score = 30 + min(40, 20 * real_hits) + min(10, 5 * brand_hits)
+    # Bonus 1 — soft signal from model_keywords (not a hard gate, just helps
+    # disambiguate between competing generics). E.g. "Tissot vintage 1965"
+    # against TISSOT_CHRONOGRAPH_GENERIC (mk=["chrono"]) vs TISSOT_VTG_GENERIC
+    # (mk=["vintage"]) — the second wins via this bonus.
+    target_model_kws = target.get("model_keywords") or []
+    if isinstance(target_model_kws, str):
+        target_model_kws = [target_model_kws]
+    mk_hits = sum(
+        1 for kw in target_model_kws
+        if canon(kw) and canon(kw) not in brand_tokens and canon(kw) in text_c
+    )
+    score += min(6, 2 * mk_hits)
+
+    # Bonus 2 — family field tokens. "Vintage Generic" vs "Chronograph (generic)"
+    # vs "Aikon" — the family tells us what the target is FOR. Token hits in the
+    # listing text reinforce the match.
+    family_str = canon(target.get("family", ""))
+    family_tokens = [
+        t for t in family_str.split()
+        if t and len(t) > 2 and t not in brand_tokens and t != "generic"
+    ]
+    family_hits = sum(1 for t in family_tokens if t in text_c)
+    score += min(4, 2 * family_hits)
+
+    # Bonus 3 — tie-breaker by must_exclude length. Targets with more exclude
+    # rules are more carefully constrained and should win ties over targets
+    # that match almost anything from the brand. Cap so it never dominates.
+    score += min(2, len(must_exclude) // 7)
+
+    # Penalty — when target claims to be "chronograph" (in its id or family)
+    # but the listing has no chrono signal, the target is a poor fit. This
+    # reliably breaks ties between VTG_CHRONOGRAPH_GENERIC and VTG_GENERIC
+    # for vintage non-chrono listings.
+    target_id_c = canon(target.get("id", ""))
+    target_family_c = canon(target.get("family", ""))
+    target_claims_chrono = (
+        "chrono" in target_id_c or "chrono" in target_family_c
+    )
+    listing_has_chrono = (
+        "chrono" in text_c or "cronograph" in text_c
+        or "cronograf" in text_c or "chronograf" in text_c
+    )
+    if target_claims_chrono and not listing_has_chrono:
+        score -= 5
+
     cond = canon(li.status)
     if "nuevo" in cond:  score += 10
     elif "muy bueno" in cond: score += 6
