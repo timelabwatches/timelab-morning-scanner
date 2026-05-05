@@ -39,6 +39,7 @@ import requests
 
 from comparables.shadow import apply_comparables_engine_vinted
 from vinted_vision import analyze_listing_photo, format_verdict_for_telegram
+from clients.atelier_client import send_offers_to_atelier
 
 
 # ─────────────────────────────────────────────
@@ -955,6 +956,7 @@ def run() -> None:
             state[li.item_id] = time.time()
 
         telegram_send("\n".join(lines).strip())
+        send_offers_to_atelier(top, source="Vinted")
     else:
         # Daily silent run also gets a heartbeat
         hora = datetime.now().strftime("%H:%M")
