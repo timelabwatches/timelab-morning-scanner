@@ -37,6 +37,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from comparables.shadow import apply_comparables_engine_vinted
+
 
 # ─────────────────────────────────────────────
 # CONFIG / ENV HELPERS
@@ -748,7 +750,15 @@ def run() -> None:
 
             # Economics
             close_est = estimate_close(target, li.status, li.title)
-            if close_est <= 0:
+            # PHASE 2 — Override/promote with comparables engine when conf=high
+            # or legacy was None. Same logic as in CC and secondhand scanners.
+            close_est = apply_comparables_engine_vinted(
+                legacy_close=close_est,
+                listing=li,
+                target=target,
+                brand_hint=brand,
+            )
+            if close_est is None or close_est <= 0:
                 diag["rejected"]["below_econ_threshold"] += 1
                 continue
             net, roi = estimate_net(li.price_eur, close_est)
