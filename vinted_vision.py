@@ -85,13 +85,20 @@ class VisionVerdict:
 
     @property
     def is_flagged(self) -> bool:
-        """True if alert should be marked for manual review."""
-        return self.verdict == "uncertain"
+        """
+        True if alert should be marked for manual review.
+        Includes both 'uncertain' verdicts AND 'ok' verdicts that came back
+        with red_flags — Vision says it's authentic but something is off
+        (e.g., the model on the photo doesn't match the matched target).
+        """
+        return self.verdict == "uncertain" or (
+            self.verdict == "ok" and bool(self.red_flags)
+        )
 
     @property
     def is_clean(self) -> bool:
-        """True if Vision validated the listing as a genuine watch."""
-        return self.verdict == "ok"
+        """True if Vision validated the listing as a genuine watch with no flags."""
+        return self.verdict == "ok" and not self.red_flags
 
     @property
     def was_skipped(self) -> bool:
@@ -315,15 +322,22 @@ def format_verdict_for_telegram(v: VisionVerdict) -> str:
     if v.was_skipped:
         return ""  # don't clutter messages when vision didn't run
 
-    icon = {
-        "ok":          "✅",
-        "uncertain":   "⚠️",
-        "replica":     "❌",
-        "parts":       "❌",
-        "wrong_brand": "❌",
-    }.get(v.verdict, "•")
+    # OK with flags → show as warning rather than green check, since something
+    # the model noticed is off (typically: model on photo doesn't match target)
+    if v.verdict == "ok" and v.red_flags:
+        icon = "⚠️"
+        label = "OK con avisos"
+    else:
+        icon = {
+            "ok":          "✅",
+            "uncertain":   "⚠️",
+            "replica":     "❌",
+            "parts":       "❌",
+            "wrong_brand": "❌",
+        }.get(v.verdict, "•")
+        label = v.verdict.upper()
 
-    lines = [f"   {icon} Vision: {v.verdict.upper()} (conf={v.confidence})"]
+    lines = [f"   {icon} Vision: {label} (conf={v.confidence})"]
     if v.notes:
         lines.append(f"      {v.notes}")
     if v.red_flags:
