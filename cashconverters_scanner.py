@@ -60,6 +60,8 @@ from timelab_core.scoring import bucket_from_score, brand_score, compute_confide
 from timelab_core.vision import load_vision_annotations, summarize_visual_hints
 from timelab_core.model_engine import gate_decision, load_model_master, load_target_stats, resolve_listing_identity
 
+from comparables.shadow import apply_comparables_engine_cc
+
 
 # -----------------------------
 # CONFIG / DEFAULTS
@@ -1333,6 +1335,7 @@ def run() -> None:
 
         # ── LEVEL 1: description-based movement filter ───────────────────────
         detected_movement = "unknown"
+        vision_data = None  # initialize early; updated later if vision is invoked
         if target is not None:
             target, match, hits, detected_movement = apply_description_filter(
                 listing, target, match, hits, targets
@@ -1407,6 +1410,13 @@ def run() -> None:
 
 
         close_est, listing_flags = estimate_close_eur(target, listing.cond, listing.title)
+        close_est = apply_comparables_engine_cc(
+            legacy_close=close_est,
+            listing=listing,
+            target=target,
+            vision_data=vision_data,
+            detected_movement=detected_movement,
+        )
 
         max_buy = target.get("max_buy_eur")
         if isinstance(max_buy, (int, float)) and listing.price_eur > float(max_buy):
@@ -1503,6 +1513,13 @@ def run() -> None:
                 continue
             # Recalculate close/net with potentially new target
             close_est, listing_flags = estimate_close_eur(target, listing.cond, match_text)
+            close_est = apply_comparables_engine_cc(
+                legacy_close=close_est,
+                listing=listing,
+                target=target,
+                vision_data=vision_data,
+                detected_movement=detected_movement,
+            )
             net, roi = estimate_net(listing.price_eur, close_est)
             if net < CC_MIN_NET_EUR or roi < CC_MIN_NET_ROI:
                 continue
