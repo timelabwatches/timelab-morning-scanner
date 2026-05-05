@@ -19,6 +19,7 @@ class EbayListing:
     condition_id: str = ""
     short_desc: str = ""
     category_id: str = ""
+    photo_url: str = ""
 
 
 def clean_url(url: str) -> str:
@@ -149,6 +150,16 @@ def search_listings(
         except Exception:
             continue
 
+        # Extract primary photo URL for Vision analysis
+        image_block = item.get("image") or {}
+        photo_url = ""
+        if isinstance(image_block, dict):
+            photo_url = str(image_block.get("imageUrl", "") or "").strip()
+        if not photo_url:
+            thumbs = item.get("thumbnailImages") or []
+            if isinstance(thumbs, list) and thumbs and isinstance(thumbs[0], dict):
+                photo_url = str(thumbs[0].get("imageUrl", "") or "").strip()
+
         listing = EbayListing(
             item_id=item_id,
             title=title,
@@ -158,6 +169,7 @@ def search_listings(
             location_text=extract_location(item.get("itemLocation") or {}),
             condition=str(item.get("condition", "")).strip(),
             condition_id=str(item.get("conditionId", "")).strip(),
+            photo_url=photo_url,
         )
         results.append(listing)
 
