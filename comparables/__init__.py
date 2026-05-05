@@ -23,6 +23,8 @@ from .shadow import (
     shadow_compare,
     apply_comparables_engine,
     apply_comparables_engine_cc,
+    apply_comparables_engine_secondhand,
+    apply_comparables_engine_vinted,
 )
 
 __all__ = [
@@ -35,4 +37,6 @@ __all__ = [
     "shadow_compare",
     "apply_comparables_engine",
     "apply_comparables_engine_cc",
+    "apply_comparables_engine_secondhand",
+    "apply_comparables_engine_vinted",
 ]
