@@ -500,14 +500,21 @@ def keyword_hits(text: str, keywords: List[str]) -> int:
 
 def compute_match_score(li: VintedListing, brand: str, target: Dict[str, Any]) -> Tuple[int, int]:
     """
-    Returns (score, kw_hits).
-    Score ∈ [0, 100]. Mirrors CC's logic at a coarse level.
+    Returns (score, real_hits).
+
+    v3 — Stricter matching that requires at least ONE model-level keyword to
+    hit, not just the brand. Previous logic gave 40 base for brand match plus
+    15×hits, so a generic "Maurice Lacroix vintage" with 0 model knowledge
+    scored 70 because the brand tokens themselves hit must_include.
+
+    Strategy: separate must_include keywords into brand-redundant tokens (the
+    target.brand split into words — e.g. {'maurice', 'lacroix'}) vs real model
+    keywords (everything else — e.g. ['aikon']). Require ≥1 real model hit.
     """
     target_brand = canon(target.get("brand", ""))
     if target_brand != brand:
         return 0, 0
 
-    # Build keyword list from target's matching fields
     must_include = target.get("must_include") or target.get("keywords_any") or []
     if isinstance(must_include, str):
         must_include = [must_include]
@@ -521,20 +528,36 @@ def compute_match_score(li: VintedListing, brand: str, target: Dict[str, Any]) -
     if must_exclude and has_any(text, must_exclude):
         return 0, 0
 
-    # Keyword hits
-    hits = keyword_hits(text, must_include)
+    # Separate brand-redundant keywords (already implied by brand match)
+    # from real model keywords (Aikon, Spirit Zulu, Seastar, etc.)
+    brand_tokens = set(canon(target_brand).split())
+    real_keywords = [kw for kw in must_include
+                     if canon(kw) and canon(kw) not in brand_tokens]
+    brand_keywords = [kw for kw in must_include
+                      if canon(kw) and canon(kw) in brand_tokens]
 
-    # Score formula:
-    #   - 40 base points for brand match
-    #   - 15 per keyword hit, cap 60
-    #   - up to 10 if status is "Nuevo con etiquetas" / "Muy bueno"
-    score = 40 + min(60, 15 * hits)
+    real_hits  = keyword_hits(text, real_keywords)
+    brand_hits = keyword_hits(text, brand_keywords)
+
+    # CRITICAL GATE: at least one real model keyword must hit. Without this,
+    # the target is just "anything with this brand name", which mass-matches
+    # generic listings to specific premium targets (the false-positive pattern
+    # observed with Maurice Lacroix Aikon catching all M.Lacroix listings).
+    # Exception: if the target has no real keywords (i.e. its must_include is
+    # entirely brand-tokens), accept on brand+condition alone — but those are
+    # weak targets we don't trust as much.
+    if real_keywords and real_hits == 0:
+        return 0, 0
+
+    # Score: 30 base for brand-and-model match, +20 per real keyword hit
+    # (cap +40), small bonus for brand-keyword hits.
+    score = 30 + min(40, 20 * real_hits) + min(10, 5 * brand_hits)
     cond = canon(li.status)
     if "nuevo" in cond:  score += 10
     elif "muy bueno" in cond: score += 6
     elif "bueno" in cond: score += 3
 
-    return min(100, score), hits
+    return min(100, score), real_hits
 
 
 def best_target(li: VintedListing, brand: str, targets: List[Dict[str, Any]]
@@ -716,6 +739,15 @@ def run() -> None:
             })
 
     # Sort by net profit, take top
+    # Dedupe first: same listing can come back from multiple queries
+    # (Vinted's relevance is fuzzy). Keep the version with highest net.
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for c in candidates:
+        iid = c["listing"].item_id
+        if iid not in by_id or c["net"] > by_id[iid]["net"]:
+            by_id[iid] = c
+    candidates = list(by_id.values())
+
     candidates.sort(key=lambda c: c["net"], reverse=True)
     top = candidates[:5]
 
