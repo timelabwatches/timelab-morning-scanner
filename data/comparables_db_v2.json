@@ -1,13 +1,13 @@
 {
   "version": "v2-catawiki-only",
-  "generated_at": "2026-05-05T06:11:50.747393Z",
+  "generated_at": "2026-05-05T07:08:31.056912Z",
   "scope": "Catawiki hammer prices only",
   "sources": {
     "excel": [
-      "TL__Contabilidad_1T26.xlsx",
-      "T2.xlsx"
+      "/home/claude/TL__Contabilidad_1T26.xlsx",
+      "/home/claude/T2.xlsx"
     ],
-    "catawiki_export": "Pedidos_1777916655_7d91aee.xlsx"
+    "catawiki_export": "/home/claude/Pedidos_1777916655_7d91aee.xlsx"
   },
   "n_comps_total": 162,
   "n_truth_mech": 117,
@@ -64,6 +64,43 @@
     "Hamilton": {
       "Cuarzo": 1.0,
       "_cuarzo_p50": 335.0
+    }
+  },
+  "family_mech_defaults": {
+    "Seiko:seiko 5": {
+      "mechanism": "Automático",
+      "n": 9,
+      "source": "data_driven"
+    },
+    "Tissot:chrono xl": {
+      "mechanism": "Cuarzo",
+      "n": 6,
+      "source": "data_driven"
+    },
+    "Baume & Mercier:classima": {
+      "mechanism": "Cuarzo",
+      "n": 3,
+      "source": "data_driven"
+    },
+    "Tissot:prc 200": {
+      "mechanism": "Cuarzo",
+      "n": 3,
+      "source": "data_driven"
+    },
+    "Tissot:prx": {
+      "mechanism": "Cuarzo",
+      "n": 3,
+      "source": "data_driven"
+    },
+    "Seiko:presage": {
+      "mechanism": "Automático",
+      "n": 3,
+      "source": "data_driven"
+    },
+    "Seiko:chronograph 100m": {
+      "mechanism": "Cuarzo",
+      "n": 5,
+      "source": "data_driven"
     }
   },
   "buckets": {
