@@ -483,6 +483,37 @@ def learn_mech_multipliers(comps: list) -> dict:
     return out
 
 
+def learn_family_mech_defaults(comps: list, min_n: int = 3) -> dict:
+    """
+    Per (brand, family), if all comps share the SAME mechanism AND n >= min_n,
+    publish that as a safe default. Returns:
+        { "Brand:family": {"mechanism": "Cuarzo", "n": 5, "source": "data_driven"} }
+
+    Used at runtime by the enricher when the analyzer fails to extract movement
+    from listing text and ref-lookup also fails.
+    """
+    by_bf = defaultdict(list)
+    for c in comps:
+        family = c.get("model_family")
+        mech = c.get("mechanism")
+        if not family or mech in (None, "", "?"):
+            continue
+        by_bf[(c["brand"], family)].append(mech)
+
+    out = {}
+    for (brand, family), mechs in by_bf.items():
+        if len(mechs) < min_n:
+            continue
+        unique = set(mechs)
+        if len(unique) == 1:
+            out[f"{brand}:{family}"] = {
+                "mechanism": mechs[0],
+                "n": len(mechs),
+                "source": "data_driven",
+            }
+    return out
+
+
 # --------- Main ----------
 
 def build_db(excel_paths: list, catawiki_path: Path, out_path: Path) -> dict:
@@ -506,6 +537,7 @@ def build_db(excel_paths: list, catawiki_path: Path, out_path: Path) -> dict:
     tier_mults = learn_tier_multipliers(comps)
     chrono_mults = learn_chrono_multipliers(comps)
     mech_mults = learn_mech_multipliers(comps)
+    family_mech_defaults = learn_family_mech_defaults(comps)
 
     db = {
         "version": "v2-catawiki-only",
@@ -523,6 +555,7 @@ def build_db(excel_paths: list, catawiki_path: Path, out_path: Path) -> dict:
         "tier_multipliers_by_brand": tier_mults,
         "chrono_multipliers_by_brand_mech": chrono_mults,
         "mech_multipliers_by_brand": mech_mults,
+        "family_mech_defaults": family_mech_defaults,
         "buckets": buckets,
     }
 
