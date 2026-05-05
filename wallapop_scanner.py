@@ -52,6 +52,7 @@ from timelab_core.model_engine import (
     load_target_stats,
     resolve_listing_identity,
 )
+from clients.atelier_client import send_offers_to_atelier
 
 # ─────────────────────────────────────────────
 # CONFIG
@@ -1769,6 +1770,7 @@ def run() -> None:
             lines.append(f"   {li.url}\n")
 
         telegram_send("\n".join(lines).strip())
+        send_offers_to_atelier(top, source="Wallapop")
 
     if WP_DEBUG:
         dbg = [
