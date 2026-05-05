@@ -18,7 +18,7 @@ Configuration (env vars, all optional):
 - GEMINI_API_KEY        (required for vision to be active; otherwise skip)
 - VT_VISION_ENABLED     (default 1; set 0 to disable cleanly across all scanners)
 - VT_VISION_MODEL       (default "gemini-flash-lite-latest")
-- VT_VISION_TIMEOUT     (default 15 seconds)
+- VT_VISION_TIMEOUT     (default 25 seconds)
 
 History note: this module evolved from vinted_vision.py. The env var prefix
 'VT_' is preserved for backwards compatibility with existing GitHub secrets;
@@ -47,7 +47,7 @@ GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
 # tier as of May 2026). Override via VT_VISION_MODEL env var if needed.
 GEMINI_MODEL      = os.environ.get("VT_VISION_MODEL", "gemini-flash-lite-latest")
 VT_VISION_ENABLED = os.environ.get("VT_VISION_ENABLED", "1") == "1"
-VT_VISION_TIMEOUT = int(os.environ.get("VT_VISION_TIMEOUT", "15"))
+VT_VISION_TIMEOUT = int(os.environ.get("VT_VISION_TIMEOUT", "25"))
 
 GEMINI_ENDPOINT = (
     f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -248,8 +248,9 @@ def analyze_listing_photo(
         },
     }
 
-    # Up to 1 retry on 429 with backoff. The free tier of Gemini can be a
-    # bit volatile when bursts of multimodal requests come too fast.
+    # Up to 1 retry on 429 OR timeout. The free tier of Gemini can be a
+    # bit volatile when bursts of multimodal requests come too fast, and
+    # multimodal requests can occasionally take longer than expected.
     _max_attempts = 2
     for attempt in range(1, _max_attempts + 1):
         try:
@@ -262,6 +263,11 @@ def analyze_listing_photo(
             )
         except requests.Timeout:
             logger.warning("[VISION] gemini timeout (attempt %d)", attempt)
+            if attempt < _max_attempts:
+                # Brief pause before retry — gives server time to recover
+                import time as _t
+                _t.sleep(3)
+                continue
             return VisionVerdict(verdict="skip", error="timeout")
         except Exception as e:
             logger.warning("[VISION] gemini request error: %s", e)
