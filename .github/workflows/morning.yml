@@ -42,7 +42,7 @@ jobs:
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           MIN_NET_EUR: "20"
           MIN_NET_ROI: "0.05"
-          MIN_MATCH_SCORE: "60"
+          MIN_MATCH_SCORE: "45"
           ALLOW_FAKE_RISK: "low,medium"
           BUY_MAX_MULT: "1.25"
           CATWIKI_COMMISSION: "0.125"
