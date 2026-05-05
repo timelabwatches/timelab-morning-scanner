@@ -11,7 +11,7 @@ from analyzer.infer_reference import infer_reference
 from analyzer.infer_watch_type import infer_watch_type
 from analyzer.score_record import score_record
 from auction.auction_price_engine import apply_auction_price_engine
-from comparables.shadow import shadow_compare
+from comparables.shadow import apply_comparables_engine
 from decision.decision_engine import apply_decision_engine
 from economics.profit_engine import apply_profit_engine
 from evaluator.classify_candidate import classify_candidate
@@ -66,7 +66,7 @@ def analyze_record(record: dict) -> dict:
 
     analyzed = apply_reference_kb(analyzed)
     analyzed = apply_auction_price_engine(analyzed)
-    shadow_compare(analyzed)  # shadow-mode logging, no side effects
+    analyzed = apply_comparables_engine(analyzed)  # promotes when legacy returned None
     analyzed = apply_profit_engine(analyzed)
 
     analyzed["score"] = score_record(analyzed)
