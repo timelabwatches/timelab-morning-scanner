@@ -41,6 +41,39 @@ from .enrichers import (
 # Self-configured logger so SHADOW lines reach stdout even when the host
 # script (e.g. main.py) does not call logging.basicConfig().
 logger = logging.getLogger("timelab.shadow")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Override guardrail
+# ──────────────────────────────────────────────────────────────────────────────
+# Block any override that would cut the legacy estimate by more than 50%.
+#
+# Rationale: in the CC and secondhand pipelines the legacy value comes from
+# `target_list.json["catawiki_estimate"].p50`, which is **curated by hand per
+# specific model** (e.g., seiko-prospex-turtle has a per-model p50 ~500€).
+# Our comparables engine groups at brand×mech (L3), so for a heterogeneous
+# brand like Seiko the L3 median (~145€) mixes Seiko 5 / Presage / Prospex
+# and dragging a Prospex curated at 500€ down to 145€ destroys real per-model
+# information.
+#
+# Asymmetric on purpose: only blocks DOWNWARD overrides. Upward overrides
+# remain safe because they correct generic legacy defaults using buckets
+# calibrated against real cierres (n≥8 unanimous).
+#
+# Threshold 0.5 chosen empirically: catastrophic Seiko Prospex cases observed
+# at ratio ~0.30-0.34; legitimate corrections (Hamilton Ventura 529→340 = 0.64)
+# remain above the threshold.
+MIN_DOWNWARD_OVERRIDE_RATIO = 0.5
+
+
+def _should_block_downward_override(legacy, new) -> bool:
+    """
+    True when the new value is so much lower than legacy that overriding
+    would likely discard valuable per-model curation. See above.
+    """
+    if not legacy or legacy <= 0 or not new or new <= 0:
+        return False
+    return (new / legacy) < MIN_DOWNWARD_OVERRIDE_RATIO
 if not logger.handlers:
     _h = logging.StreamHandler(sys.stdout)
     _h.setFormatter(logging.Formatter("%(message)s"))
@@ -288,6 +321,14 @@ def apply_comparables_engine_cc(
 
         # Override when our confidence is high
         if new_conf == "high":
+            if _should_block_downward_override(legacy_close, new_hammer):
+                logger.info(
+                    "[COMPARABLES-CC] item=%s SKIP_OVERRIDE_DOWNWARD ratio=%.2f "
+                    "old=%.0f€ new=%.0f€ (legacy preserved)",
+                    item_id, new_hammer / float(legacy_close),
+                    float(legacy_close), new_hammer,
+                )
+                return legacy_close
             logger.info(
                 "[COMPARABLES-CC] item=%s OVERRIDE old=%.0f€ → new=%.0f€ conf=high "
                 "L%s n=%d bucket=%s",
@@ -302,6 +343,125 @@ def apply_comparables_engine_cc(
     except Exception as e:
         logger.warning("[COMPARABLES-CC] failed: %s", e, exc_info=False)
         return legacy_close  # safe fallback — never break the CC pipeline
+
+
+def apply_comparables_engine_secondhand(
+    legacy_close,
+    listing,
+    target=None,
+    movement=None,
+    brand_hint=None,
+):
+    """
+    PHASE 2 wrapper for the secondhand scanners (Bilbotruke, RealCash, Locotoo)
+    via `scanners/secondhand_core.py`.
+
+    Same decision matrix as the eBay and CC variants:
+      - new returns NONE                       → keep legacy
+      - legacy is None / 0                     → use new (promote)
+      - both have value AND conf=high          → use new (override)
+      - both have value AND conf < high        → keep legacy
+
+    The secondhand pipeline differs from CC in two relevant ways:
+      - No Claude Vision data (no `vision_data` arg).
+      - Movement is already detected by the core's `detect_movement(title, raw_text)`
+        and passed in here directly (English: "automatic"/"quartz"/"manual"/"unknown").
+
+    Listing schema expected (from secondhand_core.Listing dataclass):
+        .title, .raw_text, .price_eur, .cond, .url, .sku
+
+    Logs via the same `[SHADOW]` line as the others, plus a `[COMPARABLES-2H]`
+    action line when we override or promote. Never raises; on any error returns
+    `legacy_close` unchanged.
+
+    Returns: float (close estimate to use) — or None if both engines fail.
+    """
+    try:
+        title    = getattr(listing, "title", "") or ""
+        raw_text = getattr(listing, "raw_text", "") or ""
+        cond     = getattr(listing, "cond", "") or ""
+        url      = getattr(listing, "url", "") or ""
+        sku      = getattr(listing, "sku", "") or ""
+
+        target = target or {}
+        # Brand: prefer matched target's value, then explicit hint, else nothing
+        brand = (target.get("brand") or brand_hint or "").lower()
+
+        # Movement (already detected English label from detect_movement())
+        mvh = (
+            movement.lower()
+            if movement and movement.lower() != "unknown"
+            else None
+        )
+
+        # Chrono detection from title (these scanners have no `watch_type` field)
+        title_l = title.lower()
+        is_chrono = any(
+            t in title_l for t in ("chrono", "chronograph", "cronograph", "cronograf")
+        )
+
+        # Item id for logging — sku is most stable; fall back to URL tail
+        item_id = sku or (url.rsplit("/", 1)[-1] if "/" in url else url[:50]) or "?"
+
+        # Build a record dict shaped like what shadow_compare expects
+        record = {
+            "listing_id":    item_id,
+            "brand":         brand,
+            "model":         "",                # secondhand core doesn't extract model
+            "reference":     "",                # nor reference
+            "movement_hint": mvh,
+            "watch_type":    "chronograph" if is_chrono else "",
+            "title":         title,
+            "raw_text":      f"{title} {cond} {raw_text}".strip()[:1000],
+            # Inject legacy as auction_estimate so shadow_compare logs the diff
+            "auction_estimate": (
+                {"expected_hammer": float(legacy_close)}
+                if legacy_close and legacy_close > 0 else {}
+            ),
+        }
+
+        new = shadow_compare(record)
+        new_hammer = new.get("expected_hammer")
+
+        if new_hammer is None:
+            return legacy_close  # nothing better to offer
+
+        new_conf = new.get("confidence", "low")
+
+        # Promote when legacy returned no value
+        if not legacy_close or legacy_close <= 0:
+            logger.info(
+                "[COMPARABLES-2H] item=%s PROMOTED expected_hammer=%.0f€ conf=%s "
+                "L%s n=%d bucket=%s",
+                item_id, new_hammer, new_conf,
+                new.get("level_used"), new.get("n", 0), new.get("source_bucket"),
+            )
+            return new_hammer
+
+        # Override when our confidence is high
+        if new_conf == "high":
+            if _should_block_downward_override(legacy_close, new_hammer):
+                logger.info(
+                    "[COMPARABLES-2H] item=%s SKIP_OVERRIDE_DOWNWARD ratio=%.2f "
+                    "old=%.0f€ new=%.0f€ (legacy preserved)",
+                    item_id, new_hammer / float(legacy_close),
+                    float(legacy_close), new_hammer,
+                )
+                return legacy_close
+            logger.info(
+                "[COMPARABLES-2H] item=%s OVERRIDE old=%.0f€ → new=%.0f€ conf=high "
+                "L%s n=%d bucket=%s",
+                item_id, float(legacy_close), new_hammer,
+                new.get("level_used"), new.get("n", 0), new.get("source_bucket"),
+            )
+            return new_hammer
+
+        # Otherwise defer to the curated target value
+        return legacy_close
+
+    except Exception as e:
+        logger.warning("[COMPARABLES-2H] failed: %s", e, exc_info=False)
+        return legacy_close  # safe fallback — never break the secondhand pipeline
 
 
 def apply_comparables_engine(record: dict) -> dict:
@@ -346,6 +506,14 @@ def apply_comparables_engine(record: dict) -> dict:
     if old_hammer is None:
         promote_reason = "legacy_returned_none"
     elif new_conf == "high":
+        if _should_block_downward_override(old_hammer, new_hammer):
+            item_id = record.get("listing_id") or record.get("id") or "?"
+            logger.info(
+                "[COMPARABLES] item=%s SKIP_OVERRIDE_DOWNWARD ratio=%.2f "
+                "old=%.0f€ new=%.0f€ (legacy preserved)",
+                item_id, new_hammer / old_hammer, old_hammer, new_hammer,
+            )
+            return record
         promote_reason = "high_confidence_override"
 
     if promote_reason is None:
