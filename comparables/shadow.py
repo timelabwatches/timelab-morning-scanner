@@ -149,10 +149,13 @@ def shadow_compare(record: dict) -> dict:
             auction_tier=None,    # destination auction tier unknown at scan time
         )
 
-        # Compose log line
+        # Compose log line. The old auction_price_engine writes into a sub-dict
+        # `record["auction_estimate"]`, not into top-level fields, so we read
+        # the old expected_hammer from there.
         item_id = record.get("listing_id") or record.get("id") or record.get("url") or "?"
         mech_label = f"{mech}({mech_source})" if mech else "None"
-        old = record.get("expected_hammer")
+        old_estimate = record.get("auction_estimate") or {}
+        old = old_estimate.get("expected_hammer")
         if old is not None and new.get("expected_hammer") is not None:
             diff = new["expected_hammer"] - old
             pct = (diff / old * 100) if old else 0
@@ -187,3 +190,66 @@ def shadow_compare(record: dict) -> dict:
     except Exception as e:
         logger.warning("[SHADOW] failed: %s", e, exc_info=False)
         return {"reason": "exception", "error": str(e)}
+
+
+def apply_comparables_engine(record: dict) -> dict:
+    """
+    PHASE 2 — promote the comparables engine to actual decisor.
+
+    Same as shadow_compare, but ALSO writes the new estimate into
+    `record["auction_estimate"]` when the legacy auction_price_engine left
+    it None or missing. This makes downstream profit_engine and
+    decision_engine consume our value.
+
+    Decision logic:
+      - If old auction_estimate has a valid expected_hammer  → leave it (defer to legacy)
+      - If old returned None and new engine has a value      → promote new value
+      - If both None                                          → leave None (bot rejects, same as before)
+
+    The promoted dict matches the exact field names the profit_engine reads:
+        expected_hammer, conservative_hammer, optimistic_hammer, raw_expected_hammer
+    Plus audit fields (source, confidence, level_used, n, bucket) so the
+    Telegram alert formatter can show provenance.
+
+    Mutates and returns `record`. Never raises.
+    """
+    new = shadow_compare(record)
+
+    old_estimate = record.get("auction_estimate") or {}
+    old_hammer = old_estimate.get("expected_hammer")
+
+    # Defer to legacy when it produced a value
+    if old_hammer is not None:
+        return record
+
+    # Nothing to promote
+    if new.get("expected_hammer") is None:
+        return record
+
+    # Promote
+    record["auction_estimate"] = {
+        "expected_hammer":     new["expected_hammer"],
+        "conservative_hammer": new.get("conservative", new["expected_hammer"]),
+        "optimistic_hammer":   new.get("optimistic", new["expected_hammer"]),
+        "raw_expected_hammer": new.get("raw_p50", new["expected_hammer"]),
+        # Audit / provenance — non-functional but useful for downstream logging
+        "source":      "comparables_engine",
+        "confidence":  new.get("confidence"),
+        "level_used":  new.get("level_used"),
+        "n":           new.get("n"),
+        "bucket":      new.get("source_bucket"),
+    }
+
+    item_id = record.get("listing_id") or record.get("id") or "?"
+    logger.info(
+        "[COMPARABLES] item=%s PROMOTED expected_hammer=%.0f€ p25=%.0f€ p75=%.0f€ "
+        "conf=%s L%s n=%d",
+        item_id,
+        new["expected_hammer"],
+        new.get("conservative", new["expected_hammer"]),
+        new.get("optimistic", new["expected_hammer"]),
+        new.get("confidence"),
+        new.get("level_used"),
+        new.get("n", 0),
+    )
+    return record
