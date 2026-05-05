@@ -962,15 +962,26 @@ WALLAPOP_QUERIES = [
     "reloj cyma vintage",
 ]
 
+# Chrome 120 desktop fingerprint (avoids CloudFront WAF mobile-API 403s).
+# IMPORTANT: do not change User-Agent without also updating Sec-Ch-Ua to match.
 WALLAPOP_HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-        "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "es-ES,es;q=0.9",
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://es.wallapop.com/",
     "Origin": "https://es.wallapop.com",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-site",
 }
 
 # ─────────────────────────────────────────────
@@ -1065,14 +1076,64 @@ def telegram_send(text: str) -> None:
 # Set to True at module load; flipped to False after first call.
 _WP_DIAG_FIRST_CALL = True
 
+# Warm-up flag: ensure a homepage GET happens once per session to acquire
+# CloudFront cookies that the JSON API endpoint requires.
+_WP_WARMUP_DONE = False
+
+
+def _wallapop_warmup(sess: requests.Session) -> bool:
+    """
+    Visit es.wallapop.com once to collect CloudFront/session cookies.
+    Without this, the JSON API endpoint typically returns 403 from the WAF.
+
+    Returns True if the homepage responded 200; the cookies are stored on the
+    passed `sess` regardless. Always logs status for diagnostics.
+    """
+    home_headers = {
+        "User-Agent":      WALLAPOP_HEADERS["User-Agent"],
+        "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": WALLAPOP_HEADERS["Accept-Language"],
+        "Accept-Encoding": WALLAPOP_HEADERS["Accept-Encoding"],
+        "DNT":             "1",
+        "Connection":      "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Ch-Ua":          WALLAPOP_HEADERS["Sec-Ch-Ua"],
+        "Sec-Ch-Ua-Mobile":   WALLAPOP_HEADERS["Sec-Ch-Ua-Mobile"],
+        "Sec-Ch-Ua-Platform": WALLAPOP_HEADERS["Sec-Ch-Ua-Platform"],
+        "Sec-Fetch-Dest":     "document",
+        "Sec-Fetch-Mode":     "navigate",
+        "Sec-Fetch-Site":     "none",
+        "Sec-Fetch-User":     "?1",
+    }
+    try:
+        r = sess.get("https://es.wallapop.com/", headers=home_headers, timeout=15)
+        cookie_names = sorted({c.name for c in sess.cookies})
+        print(
+            f"[WP-DIAG] warmup status={r.status_code} content_length={len(r.content)} "
+            f"cookies_acquired={len(sess.cookies)} names={cookie_names[:8]}",
+            flush=True,
+        )
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[WP-DIAG] warmup_failed err={type(e).__name__}: {e}", flush=True)
+        return False
+
 def search_wallapop(
     query: str,
     max_items: int = 50,
     session: Optional[requests.Session] = None,
 ) -> List[WallapopListing]:
     """Search Wallapop's JSON API for a given query."""
-    global _WP_DIAG_FIRST_CALL
+    global _WP_DIAG_FIRST_CALL, _WP_WARMUP_DONE
     sess = session or requests.Session()
+
+    # Warm-up: hit the homepage once per session to collect CloudFront cookies.
+    # Without this the JSON API returns 403 from the WAF on data-center IPs.
+    if not _WP_WARMUP_DONE:
+        _WP_WARMUP_DONE = True   # set even on failure to avoid retry storms
+        _wallapop_warmup(sess)
+        time.sleep(1.5)          # small delay to look more human-paced
+
     results: List[WallapopListing] = []
     start = 0
     page_size = 40
