@@ -1,0 +1,54 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# === Virtual environments ===
+venv/
+.venv/
+env/
+ENV/
+
+# === Secrets y credenciales (NUNCA commitear) ===
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+token.json
+secrets.json
+
+# === IDEs y editores ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === Sistema operativo ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Logs y caches del bot ===
+*.log
+logs/
+.cache/
+cache/
+
+# === TIMELAB — datos privados que alimentan el comparables builder ===
+# Excels de contabilidad con datos personales de clientes
+TL__Contabilidad_*.xlsx
+TL_Contabilidad_*.xlsx
+# Exports de Catawiki con direcciones y nombres de compradores
+Pedidos_*.xlsx
+# Cualquier export auxiliar local que vayas usando
+*_export_local.xlsx
