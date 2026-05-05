@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 from comparables.shadow import apply_comparables_engine_vinted
+from vinted_vision import analyze_listing_photo, format_verdict_for_telegram
 
 
 # ─────────────────────────────────────────────
@@ -277,6 +278,7 @@ class VintedListing:
     view_count:   int
     path:         str           # e.g. "Mujer / Accesorios / Relojes"
     raw_text:     str = ""      # for matching
+    photo_url:    str = ""      # first photo URL for Vision analysis
 
 
 # ─────────────────────────────────────────────
@@ -417,6 +419,27 @@ def _parse_vinted_item(item: Dict[str, Any]) -> Optional[VintedListing]:
         user_id     = str((item.get("user") or {}).get("id") or "") if isinstance(item.get("user"), dict) else ""
         photos      = item.get("photos") or []
         photos_count = len(photos) if isinstance(photos, list) else 0
+
+        # Extract first photo URL for Vision (try several known shapes:
+        # Vinted's API returns a list of dicts with multiple URL fields —
+        # prefer high-resolution but fall back to any available URL).
+        photo_url = ""
+        if isinstance(photos, list) and photos:
+            p0 = photos[0]
+            if isinstance(p0, dict):
+                photo_url = (
+                    p0.get("full_size_url")
+                    or p0.get("url")
+                    or p0.get("high_resolution", {}).get("url", "") if isinstance(p0.get("high_resolution"), dict) else ""
+                    or p0.get("thumbnails", [{}])[0].get("url", "") if (p0.get("thumbnails") and isinstance(p0.get("thumbnails"), list)) else ""
+                )
+                # Belt-and-braces fallback
+                if not photo_url:
+                    for k in ("full_size_url", "url"):
+                        if isinstance(p0.get(k), str):
+                            photo_url = p0[k]
+                            break
+
         fav_count   = int(item.get("favourite_count") or 0)
         view_count  = int(item.get("view_count") or 0)
         path        = str(item.get("path") or "")
@@ -428,7 +451,7 @@ def _parse_vinted_item(item: Dict[str, Any]) -> Optional[VintedListing]:
             url=url, brand_title=brand_title, size_title=size_title,
             status=status, user_id=user_id, photos_count=photos_count,
             favourite_count=fav_count, view_count=view_count,
-            path=path, raw_text=raw_text,
+            path=path, raw_text=raw_text, photo_url=photo_url,
         )
     except Exception as e:
         print(f"[VT] parse error: {e}", flush=True)
@@ -862,6 +885,46 @@ def run() -> None:
     candidates.sort(key=lambda c: c["net"], reverse=True)
     top = candidates[:5]
 
+    # ───────────────────────────────────────────
+    # VISION LAYER (Gemini Flash) — last line of defense
+    # ───────────────────────────────────────────
+    # Runs only on the top candidates (typically ≤5) — minimal API cost.
+    # Verdicts:
+    #   - is_blocking → drop the alert (replica/parts/wrong_brand)
+    #   - is_flagged → keep but mark for manual verification
+    #   - is_clean → keep with positive vision tag
+    #   - was_skipped → no API key/photo/etc; behave as if vision didn't run
+    vision_diag = {"analyzed": 0, "ok": 0, "uncertain": 0, "blocked": 0, "skipped": 0}
+    for c in top:
+        li = c["listing"]; t = c["target"]
+        verdict = analyze_listing_photo(
+            photo_url=li.photo_url,
+            brand_hint=c.get("brand", ""),
+            target_id=t.get("id", ""),
+            model_hint=t.get("family", ""),
+            title=li.title,
+        )
+        c["vision"] = verdict
+        vision_diag["analyzed"] += 1
+        if verdict.was_skipped:
+            vision_diag["skipped"] += 1
+        elif verdict.is_blocking:
+            vision_diag["blocked"] += 1
+        elif verdict.is_flagged:
+            vision_diag["uncertain"] += 1
+        else:
+            vision_diag["ok"] += 1
+        print(
+            f"[VISION] item={li.item_id} verdict={verdict.verdict} "
+            f"conf={verdict.confidence} flags={verdict.red_flags} "
+            f"err={verdict.error or '-'}",
+            flush=True,
+        )
+
+    # Filter out blocking verdicts — these are clear false positives
+    top = [c for c in top if not c.get("vision") or not c["vision"].is_blocking]
+    diag["vision"] = vision_diag
+
     # Build alert
     if top:
         hora = datetime.now().strftime("%H:%M")
@@ -877,6 +940,10 @@ def run() -> None:
             lines.append(f"   ✅ Neto: {c['net']:.0f}€  |  ROI: {c['roi']*100:.0f}%  |  Score: {c['score']}")
             lines.append(f"   📋 Estado: {li.status}  |  Fotos: {li.photos_count}  |  Fav: {li.favourite_count}")
             lines.append(f"   🎯 Target: {t.get('id', '?')}")
+            # Vision verdict block (empty string when vision was skipped)
+            v_block = format_verdict_for_telegram(c.get("vision")) if c.get("vision") else ""
+            if v_block:
+                lines.append(v_block)
             lines.append(f"   🔗 {li.url}")
             lines.append("")
             # Mark in cooldown state
@@ -898,11 +965,16 @@ def run() -> None:
     # Debug summary
     if VT_DEBUG:
         rej_lines = " | ".join(f"{k}={v}" for k, v in diag["rejected"].items() if v > 0)
+        v = diag.get("vision", {})
+        v_line = (f"Vision: analyzed={v.get('analyzed',0)} ok={v.get('ok',0)} "
+                  f"uncertain={v.get('uncertain',0)} blocked={v.get('blocked',0)} "
+                  f"skipped={v.get('skipped',0)}")
         dbg = [
             "TIMELAB Vinted Debug",
             f"Queries: {diag['queries']} | Collected: {diag['collected']} | Scanned: {diag['scanned']}",
             f"Passed: match={diag['passed_match']} | econ={diag['passed_econ']}",
             f"Rejected: {rej_lines or '(none)'}",
+            v_line,
             f"Thresholds: match≥{VT_MIN_MATCH_SCORE} | net≥{VT_MIN_NET_EUR}€ | roi≥{VT_MIN_NET_ROI} | haircut={VT_CLOSE_HAIRCUT}",
             f"Top {len(top)} sent to Telegram (channel: {'VINTED' if env_str('TELEGRAM_CHAT_ID_VINTED', '') else 'main'})",
         ]
