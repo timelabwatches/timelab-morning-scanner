@@ -66,14 +66,31 @@ logger = logging.getLogger("timelab.shadow")
 MIN_DOWNWARD_OVERRIDE_RATIO = 0.5
 
 
-def _should_block_downward_override(legacy, new) -> bool:
+def _should_block_downward_override(legacy, new, conf="low", n=0) -> bool:
     """
     True when the new value is so much lower than legacy that overriding
     would likely discard valuable per-model curation. See above.
+
+    EXCEPTION: when our motor has both conf=high AND n≥12 cierres real,
+    we trust it over the legacy curated value. The original guardrail
+    protected against coarse buckets (e.g., Seiko Auto L3 with n=18 mixing
+    Seiko 5 / Presage / Prospex tiers) overriding fine-grained target
+    curation. But buckets like Tissot Cuarzo No-chrono L3 (n=16, unanimous,
+    all real cierres of the same category) are MORE accurate than a
+    static catawiki_estimate.p50 set by hand. The asymmetric block was
+    too eager — we'd rather let strongly-evidenced overrides through
+    even when they correct legacy downward.
     """
     if not legacy or legacy <= 0 or not new or new <= 0:
         return False
-    return (new / legacy) < MIN_DOWNWARD_OVERRIDE_RATIO
+    if (new / legacy) >= MIN_DOWNWARD_OVERRIDE_RATIO:
+        return False  # not a significant downward; allow override
+    # Below 0.5x ratio: only block when motor's confidence is weak.
+    # When conf=high AND we have ≥12 real cierres, trust the empirical
+    # value even if it's much lower than legacy.
+    if conf == "high" and n >= 12:
+        return False  # trust motor's empirical evidence
+    return True  # block — motor doesn't have strong-enough evidence
 if not logger.handlers:
     _h = logging.StreamHandler(sys.stdout)
     _h.setFormatter(logging.Formatter("%(message)s"))
@@ -321,7 +338,7 @@ def apply_comparables_engine_cc(
 
         # Override when our confidence is high
         if new_conf == "high":
-            if _should_block_downward_override(legacy_close, new_hammer):
+            if _should_block_downward_override(legacy_close, new_hammer, conf=new_conf, n=new.get('n', 0)):
                 logger.info(
                     "[COMPARABLES-CC] item=%s SKIP_OVERRIDE_DOWNWARD ratio=%.2f "
                     "old=%.0f€ new=%.0f€ (legacy preserved)",
@@ -440,7 +457,7 @@ def apply_comparables_engine_secondhand(
 
         # Override when our confidence is high
         if new_conf == "high":
-            if _should_block_downward_override(legacy_close, new_hammer):
+            if _should_block_downward_override(legacy_close, new_hammer, conf=new_conf, n=new.get('n', 0)):
                 logger.info(
                     "[COMPARABLES-2H] item=%s SKIP_OVERRIDE_DOWNWARD ratio=%.2f "
                     "old=%.0f€ new=%.0f€ (legacy preserved)",
@@ -546,7 +563,7 @@ def apply_comparables_engine_vinted(
 
         # Override when our confidence is high — but only if not catastrophically lower
         if new_conf == "high":
-            if _should_block_downward_override(legacy_close, new_hammer):
+            if _should_block_downward_override(legacy_close, new_hammer, conf=new_conf, n=new.get('n', 0)):
                 logger.info(
                     "[COMPARABLES-VT] item=%s SKIP_OVERRIDE_DOWNWARD ratio=%.2f "
                     "old=%.0f€ new=%.0f€ (legacy preserved)",
@@ -612,7 +629,7 @@ def apply_comparables_engine(record: dict) -> dict:
     if old_hammer is None:
         promote_reason = "legacy_returned_none"
     elif new_conf == "high":
-        if _should_block_downward_override(old_hammer, new_hammer):
+        if _should_block_downward_override(old_hammer, new_hammer, conf=new_conf, n=new.get('n', 0)):
             item_id = record.get("listing_id") or record.get("id") or "?"
             logger.info(
                 "[COMPARABLES] item=%s SKIP_OVERRIDE_DOWNWARD ratio=%.2f "
