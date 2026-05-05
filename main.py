@@ -22,6 +22,7 @@ from pipeline.cooldown import (
 )
 from pipeline.engine import build_alert_payload, evaluate_candidate, passes_decision_gate
 from pipeline.targets import load_target_bundle
+from clients.atelier_client import send_offers_to_atelier
 
 
 def dedupe_listings(listings: list[EbayListing]) -> list[EbayListing]:
@@ -262,6 +263,7 @@ def main() -> None:
         raw_candidates=raw_candidates[:5],
     )
     send_message(settings, message)
+    send_offers_to_atelier(top_alerts, source="eBay")
 
 
 if __name__ == "__main__":
