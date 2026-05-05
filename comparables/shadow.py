@@ -244,14 +244,19 @@ def apply_comparables_engine(record: dict) -> dict:
         "conservative_hammer": new.get("conservative", new_hammer),
         "optimistic_hammer":   new.get("optimistic", new_hammer),
         "raw_expected_hammer": new.get("raw_p50", new_hammer),
-        # Audit / provenance
+        # ↓ Contract fields the decision_engine reads directly. Without these,
+        # decision_engine emits 'pass' with reason='no_pricing_data', which
+        # silently downgrades any candidate that we override.
+        "price_estimate_available": True,
+        "price_confidence":         new_conf,   # 'high' | 'medium' | 'low'
+        # Audit / provenance (non-functional for decision_engine)
         "source":         "comparables_engine",
         "confidence":     new_conf,
         "level_used":     new.get("level_used"),
         "n":              new.get("n"),
         "bucket":         new.get("source_bucket"),
         "promote_reason": promote_reason,
-        "legacy_value":   old_hammer,    # preserved for traceability (None if was missing)
+        "legacy_value":   old_hammer,
     }
 
     item_id = record.get("listing_id") or record.get("id") or "?"
