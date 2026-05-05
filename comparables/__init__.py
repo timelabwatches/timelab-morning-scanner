@@ -22,6 +22,7 @@ from .enrichers import (
 from .shadow import (
     shadow_compare,
     apply_comparables_engine,
+    apply_comparables_engine_cc,
 )
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "infer_mechanism_from_family",
     "shadow_compare",
     "apply_comparables_engine",
+    "apply_comparables_engine_cc",
 ]
