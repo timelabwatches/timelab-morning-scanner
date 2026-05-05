@@ -56,7 +56,10 @@ API_HEADERS = {
     "User-Agent":      UA,
     "Accept":          "application/json, text/plain, */*",
     "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
+    # Intentionally drop 'br' — `requests` doesn't decompress Brotli without
+    # the optional `brotli` package, and Vinted gladly serves gzip if br is
+    # not advertised. This avoids the body-as-binary bug seen in probe v1.
+    "Accept-Encoding": "gzip, deflate",
     "Referer":         "https://www.vinted.es/catalog?catalog[]=" + WATCHES_CATEGORY,
     "Origin":          "https://www.vinted.es",
     "DNT":             "1",
@@ -113,6 +116,10 @@ def search(sess: requests.Session, keyword: str = "omega") -> Dict[str, Any]:
         "content_length": len(r.content),
         "url": r.url[:200],
         "ctype": r.headers.get("Content-Type", ""),
+        # Diagnostic: if this is 'br' or unexpected, decompression failed.
+        # 'requests' handles gzip/deflate natively; brotli requires the
+        # optional 'brotli' package.
+        "content_encoding": r.headers.get("Content-Encoding", "<none>"),
     }
     if r.status_code != 200:
         out["body_excerpt"] = r.text[:400]
