@@ -192,6 +192,118 @@ def shadow_compare(record: dict) -> dict:
         return {"reason": "exception", "error": str(e)}
 
 
+def apply_comparables_engine_cc(
+    legacy_close,
+    listing,
+    target=None,
+    vision_data=None,
+    detected_movement=None,
+):
+    """
+    PHASE 2 wrapper for the CashConverters scanner.
+
+    Same decision matrix as `apply_comparables_engine` (the eBay one) but
+    adapted to CC's flow where:
+      - There is no `auction_estimate` dict; CC passes a raw float around.
+      - Inputs come from the Listing dataclass + matched target + vision data.
+      - Returns the close estimate to use (legacy or new).
+
+    Decision logic:
+      - new returns NONE                       → keep legacy
+      - legacy is None / 0                     → use new (promote)
+      - both have value AND conf=high          → use new (override)
+      - both have value AND conf < high        → keep legacy
+
+    Logs via the same `[SHADOW]` line as eBay (diff legacy vs new) plus a
+    `[COMPARABLES-CC]` action line when we override or promote. Never raises;
+    on any error returns `legacy_close` unchanged.
+
+    Returns: float (close estimate to use) — or None if both engines fail.
+    """
+    try:
+        title = getattr(listing, "title", "") or ""
+        cond  = getattr(listing, "cond", "") or ""
+        desc  = getattr(listing, "description", "") or ""
+        url   = getattr(listing, "url", "") or "?"
+
+        target = target or {}
+        vision = vision_data or {}
+
+        # Brand: prefer the matched target's value, fall back to vision
+        brand = target.get("brand") or vision.get("brand") or ""
+
+        # Reference: from vision (CC's analyzer doesn't extract refs reliably)
+        reference = vision.get("reference") or ""
+
+        # Movement: detected_movement (CC's text-based detector, English) is most reliable.
+        # Skip "unknown" sentinel and fall back to vision.
+        mvh_raw = (
+            detected_movement
+            if detected_movement and detected_movement != "unknown"
+            else (vision.get("movement") or "")
+        )
+
+        # Chrono detection from title (CC has no `watch_type` field like the analyzer)
+        title_l = title.lower()
+        is_chrono = any(
+            t in title_l for t in ("chrono", "chronograph", "cronograph", "cronograf")
+        )
+
+        item_id = url.rsplit("/", 1)[-1] if "/" in url else url[:50]
+
+        # Build a record dict shaped like what shadow_compare expects
+        record = {
+            "listing_id": item_id,
+            "brand":         brand.lower() if brand else "",
+            "model":         (vision.get("model") or "").lower(),
+            "reference":     reference,
+            "movement_hint": mvh_raw.lower() if mvh_raw else None,
+            "watch_type":    "chronograph" if is_chrono else "",
+            "title":         title,
+            "raw_text":      f"{title} {cond} {desc}".strip()[:1000],
+            # Inject legacy estimate so shadow_compare can log diff vs new
+            "auction_estimate": (
+                {"expected_hammer": float(legacy_close)}
+                if legacy_close and legacy_close > 0 else {}
+            ),
+        }
+
+        new = shadow_compare(record)
+        new_hammer = new.get("expected_hammer")
+
+        if new_hammer is None:
+            return legacy_close  # nothing better to offer
+
+        new_conf = new.get("confidence", "low")
+
+        # Promote when legacy returned no value
+        if not legacy_close or legacy_close <= 0:
+            logger.info(
+                "[COMPARABLES-CC] item=%s PROMOTED expected_hammer=%.0f€ conf=%s "
+                "L%s n=%d bucket=%s",
+                item_id, new_hammer, new_conf,
+                new.get("level_used"), new.get("n", 0), new.get("source_bucket"),
+            )
+            return new_hammer
+
+        # Override when our confidence is high
+        if new_conf == "high":
+            logger.info(
+                "[COMPARABLES-CC] item=%s OVERRIDE old=%.0f€ → new=%.0f€ conf=high "
+                "L%s n=%d bucket=%s",
+                item_id, float(legacy_close), new_hammer,
+                new.get("level_used"), new.get("n", 0), new.get("source_bucket"),
+            )
+            return new_hammer
+
+        # Otherwise defer to the curated target value
+        return legacy_close
+
+    except Exception as e:
+        logger.warning("[COMPARABLES-CC] failed: %s", e, exc_info=False)
+        return legacy_close  # safe fallback — never break the CC pipeline
+
+
 def apply_comparables_engine(record: dict) -> dict:
     """
     PHASE 2 (refined) — promote the comparables engine to actual decisor.
