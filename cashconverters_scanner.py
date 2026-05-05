@@ -1584,6 +1584,53 @@ def run() -> None:
     candidates.sort(key=lambda x: (x.get("score", 0), x["net"], x["match"]), reverse=True)
     top = candidates[:10]
 
+    # ───────────────────────────────────────────
+    # VISION LAYER (Gemini Flash-Lite) — last line of defense
+    # ───────────────────────────────────────────
+    # Same pattern as Vinted: validate top candidates' photos, drop those
+    # that come back as parts/replica/wrong_brand. Failures (no API key,
+    # missing photo, etc.) yield 'skip' → no impact.
+    # NOTE: there's older dormant Claude Vision code earlier in this file
+    # (analyze_listing_image, apply_vision_to_match) that is gated by
+    # CC_VISION_ENABLED + ANTHROPIC_API_KEY. It coexists harmlessly because
+    # it's off by default. Future cleanup: consolidate into one system.
+    import time as _time
+    from gemini_vision import analyze_listing_photo, format_verdict_for_telegram
+    vision_diag = {"analyzed": 0, "ok": 0, "uncertain": 0, "blocked": 0, "skipped": 0}
+    for i, it in enumerate(top):
+        if i > 0:
+            _time.sleep(2.0)  # pace requests
+        listing = it["listing"]
+        target_obj = it["target"]
+        photo_url = getattr(listing, "image_url", "") or ""
+        verdict = analyze_listing_photo(
+            photo_url=photo_url,
+            brand_hint=getattr(listing, "brand_hint", "") or getattr(target_obj, "brand", "") or "",
+            target_id=getattr(target_obj, "id", "") or getattr(target_obj, "key", "") or "",
+            model_hint=getattr(target_obj, "family", "") or "",
+            title=getattr(listing, "title", ""),
+            source="CashConverters",
+        )
+        it["vision"] = verdict
+        vision_diag["analyzed"] += 1
+        if verdict.was_skipped:
+            vision_diag["skipped"] += 1
+        elif verdict.is_blocking:
+            vision_diag["blocked"] += 1
+        elif verdict.is_flagged:
+            vision_diag["uncertain"] += 1
+        else:
+            vision_diag["ok"] += 1
+        print(
+            f"[VISION] item={getattr(listing, 'sku', '')[:20] or getattr(listing, 'url', '')[-20:]} "
+            f"verdict={verdict.verdict} conf={verdict.confidence} "
+            f"flags={verdict.red_flags} err={verdict.error or '-'}",
+            flush=True,
+        )
+
+    # Filter out blocking verdicts
+    top = [it for it in top if not it.get("vision") or not it["vision"].is_blocking]
+
     from datetime import datetime as _dt
     hora = _dt.now().strftime("%H:%M")
     sep_heavy = "━" * 26
@@ -1699,6 +1746,11 @@ def run() -> None:
                 lines.append(f"{extras_str}")
             if n > 0:
                 lines.append(f"📊 Rango Catawiki: {h_low:.0f}–{h_base:.0f}–{h_high:.0f}€  ({n} ventas, {trend_arrow})")
+            # Vision verdict block (empty when Vision was skipped)
+            v_block = format_verdict_for_telegram(it.get("vision")) if it.get("vision") else ""
+            if v_block:
+                lines.append("")
+                lines.append(v_block)
             lines.append("")
             lines.append(f"🔗 {listing.url}")
             lines.append("")
@@ -1730,6 +1782,11 @@ def run() -> None:
         dbg.append(f"stop: max_items:{CC_MAX_ITEMS} | good_brands_target:{CC_GOOD_BRANDS_TARGET}")
         dbg.append(f"targets: items:{len(targets)} | valid:{len(targets)}")
         dbg.append(f"verify_mode:{1 if CC_VERIFY_MODE else 0}")
+        dbg.append(
+            f"vision: analyzed={vision_diag['analyzed']} "
+            f"ok={vision_diag['ok']} uncertain={vision_diag['uncertain']} "
+            f"blocked={vision_diag['blocked']} skipped={vision_diag['skipped']}"
+        )
 
         if CC_VERIFY_MODE and debug_rejected:
             dbg.append("\nTop candidates (even if rejected):")
